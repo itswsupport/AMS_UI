@@ -1,0 +1,413 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(100% 0.00011 271.152);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: #3482AE;
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    box-sizing: border-box;
+    font-family: var(--font-exo), 'Exo', sans-serif;
+    font-size: 12px;
+    text-transform: uppercase;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html {
+    font-family: var(--font-exo), 'Exo', sans-serif;
+    font-size: 12px;
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  button {
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+    font-size: inherit;
+  }
+
+  .MuiTableCell-root {
+    font-family: var(--font-exo), 'Exo', sans-serif !important;
+    font-size: 12px !important;
+  }
+
+  .MuiTablePagination-root,
+  .MuiTablePagination-toolbar,
+  .MuiTablePagination-caption,
+  .MuiTablePagination-select,
+  .MuiTablePagination-actions,
+  .MuiSelect-select,
+  .MuiMenuItem-root,
+  .MuiFormControl-root,
+  .MuiInputBase-root,
+  .MuiFormLabel-root,
+  .MuiInputLabel-root,
+  .MuiTypography-root {
+    font-family: var(--font-exo), 'Exo', sans-serif !important;
+  }
+
+  [class*="MuiFormLabel-root"],
+  [class*="MuiInputLabel-root"],
+  [class*="MuiTablePagination"],
+  [class*="MuiSelect"],
+  [class*="MuiMenuItem"],
+  [class*="MuiTypography"] {
+    font-family: var(--font-exo), 'Exo', sans-serif !important;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@layer base {
+  :root {
+    --sidebar: #3482AE;
+    --sidebar-foreground: oklch(0.145 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: oklch(0.708 0 0);
+  }
+
+  [data-slot="sidebar"],
+  [data-slot="sidebar"] * {
+    font-size: 12px !important;
+    font-weight: 400 !important;
+  }
+}
+
+/* Original JSP styles from style.jsp */
+.card-title {
+  color: #3482AE;
+  text-transform: uppercase;
+  font-family: var(--font-exo), 'Exo', sans-serif;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+label {
+  color: #3482AE;
+  font-family: var(--font-exo), 'Exo', sans-serif;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.tblth {
+  background-color: #3482AE;
+  color: #FFFFFF;
+  text-transform: uppercase;
+}
+
+.divStyle {
+  background-color: #E6F2FF;
+  padding: 4px;
+  border: 1px solid #cbeefa;
+  border-radius: 2px;
+  width: 100%;
+  min-height: 28px;
+}
+
+.back-button {
+  border-radius: 2px;
+  background-color: #3482AE;
+  color: white;
+  font-family: var(--font-exo), 'Exo', sans-serif;
+  text-transform: uppercase;
+  text-decoration: none;
+  font-weight: 450;
+}
+
+.custom-card-header {
+  background-color: #d3e6f4;
+  color: #384c74;
+}
+
+.custom-card-header1 {
+  background-color: #c3eae8;
+  color: #384c74;
+}
+
+.order-card {
+  color: #fff;
+  height: 80px;
+}
+
+.bg-c-default {
+  background: #3482AE;
+}
+
+.bg-c-blue {
+  background: linear-gradient(45deg, #5aa7ff, #73b4ff);
+}
+
+.bg-c-green {
+  background: linear-gradient(45deg, #2ed8b6, #59e0c5);
+}
+
+.bg-c-yellow {
+  background: linear-gradient(45deg, #FFB64D, #ffcb80);
+}
+
+.bg-c-pink {
+  background: linear-gradient(45deg, #e74c3c, #ff4757);
+}
+
+.form-control:focus {
+  box-shadow: none;
+}
+
+.form-control-borderless {
+  border: none;
+}
+
+.form-control-borderless:focus,
+.form-control-borderless:hover,
+.form-control-borderless:active {
+  border: none;
+  outline: none;
+  box-shadow: none;
+}
+
+.table {
+  width: 100%;
+  margin-bottom: 1rem;
+  color: #212529;
+  border-collapse: collapse;
+}
+
+.table-bordered {
+  border: 1px solid #dee2e6;
+}
+
+.table-bordered th,
+.table-bordered td {
+  border: 1px solid #dee2e6;
+  padding: 0.75rem;
+  vertical-align: top;
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+@layer utilities {
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fadeInUp {
+    animation: fadeInUp 0.3s ease-out;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   DataTable print support.
+
+   DataTable renders a second, plain <table> inside .print-table-container. It
+   exists only so window.print() produces a clean sheet instead of trying to
+   print the MUI grid's virtualised DOM. Without this rule that table renders on
+   screen underneath the grid, listing every row a second time.
+   --------------------------------------------------------------------------- */
+.print-table-container {
+  display: none;
+}
+
+@media print {
+  /* The grid, toolbars and export buttons are screen furniture. */
+  .no-print {
+    display: none !important;
+  }
+
+  .print-table-container {
+    display: block;
+  }
+
+  .print-only-meta {
+    display: block !important;
+    margin-bottom: 8px;
+    font-size: 11px;
+    color: #374151;
+  }
+
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10pt;
+  }
+
+  /* print-color-adjust keeps the header blue; browsers drop backgrounds otherwise. */
+  .data-table th {
+    background-color: #3482ae !important;
+    color: #ffffff !important;
+    border: 1px solid #000;
+    padding: 6px 10px;
+    text-align: center;
+    text-transform: uppercase;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .data-table td {
+    border: 1px solid #ccc;
+    padding: 6px 10px;
+    text-align: center;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Sidebar: no divider between the menu and the page.
+
+   The shadcn Sidebar puts group-data-[side=left]:border-r on its container,
+   which draws a 1px line down the right edge so the page background never sits
+   flush against the blue.
+
+   It has to be overridden here rather than with a border-r-0 class on the
+   component: that rule's selector carries the group + data-attribute, so it is
+   more specific than a plain utility class and wins regardless of order.
+   --------------------------------------------------------------------------- */
+[data-slot="sidebar-container"],
+[data-slot="sidebar-inner"] {
+  border-right-width: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Text inputs with a datalist: no browser dropdown arrow.
+
+   An <input list="..."> gets a small arrow drawn on its right edge by Chrome
+   and Edge. It makes the box look like a <select> when it is not — the whole
+   point of the Category field is that a name can be typed, not only chosen.
+
+   It is a shadow-DOM pseudo-element, so it cannot be hidden with a class on the
+   input; this is the only place the rule can live. The suggestions still appear
+   while typing, which is the part worth keeping.
+   --------------------------------------------------------------------------- */
+input[list]::-webkit-calendar-picker-indicator {
+  display: none !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Native <select>s that must sit beside a react-select and look identical.
+
+   WHY THIS EXISTS. A form mixing both kinds of control shows two different
+   dropdown marks: the browser draws its own on a <select>, and react-select
+   draws one in the DOM. They are never quite the same weight or inset, and
+   matching the browser by eye fails the moment a different browser is used.
+
+   So the browser's mark is removed with appearance:none and the SAME chevron
+   is painted here as a background image. Both controls are then drawn by us,
+   and identical by construction rather than by resemblance.
+
+   The chevron is the one in components/masters/nativeLikeSelect.jsx — same
+   geometry, same 1.5 stroke, same #374151. Change one and change the other.
+
+   padding-right leaves room for it; the arrow sits 10px from the right edge,
+   which is what the react-select indicator's own padding gives.
+   --------------------------------------------------------------------------- */
+select.ams-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath d='M1 1.5 L5 5.5 L9 1.5' fill='none' stroke='%23374151' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+}
+
+/* A disabled select keeps the arrow but must not keep a white strip behind it. */
+select.ams-select:disabled {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath d='M1 1.5 L5 5.5 L9 1.5' fill='none' stroke='%239ca3af' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
