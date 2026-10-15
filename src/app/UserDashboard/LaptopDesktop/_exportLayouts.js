@@ -7,12 +7,15 @@
 
 import { formatDateForDisplay as fmtDate } from "@/utils/dateUtils";
 
-/** "3 yr 11 mo" → "3.11", "5 mo" → "0.5" — AGE as Year.Month for the desktop sheet. */
+/**
+ * "3 yr 11 mo" → "3.11", "5 yr 1 mo" → "5.01", "5 mo" → "0.05" — AGE as Year.Month for the
+ * register sheets, the month always two digits (01 to 11) so 5.01 and 5.10 never read alike.
+ */
 const ageYearMonth = (age) => {
   if (!age) return "";
   const years = /(\d+)\s*yr/.exec(age)?.[1] ?? "0";
   const months = /(\d+)\s*mo/.exec(age)?.[1] ?? "0";
-  return `${years}.${months}`;
+  return `${years}.${months.padStart(2, "0")}`;
 };
 
 /*

@@ -339,6 +339,25 @@ export default function BulkUploadPanel({ type }) {
    * fetches the live lists; _deviceTemplate.js builds the workbook from them.
    */
   const downloadDeviceTemplate = async () => {
+    /*
+     * WHICH DEVICE TYPE — a sheet for one type (Desktop) shows only that type's columns, with its
+     * mandatory ones marked *; "All device types" keeps one sheet for every type, as before.
+     */
+    const { value: picked, isConfirmed } = await Swal.fire({
+      title: "Download template for",
+      input: "select",
+      inputOptions: {
+        all: "All device types",
+        ...Object.fromEntries(devices.map((d) => [String(d.id), d.device_name])),
+      },
+      inputValue: devices.length === 1 ? String(devices[0].id) : "all",
+      showCancelButton: true,
+      confirmButtonText: "Download",
+      confirmButtonColor: "#3482AE",
+    });
+    if (!isConfirmed) return;
+    const chosen = picked === "all" ? devices : devices.filter((d) => String(d.id) === picked);
+
     const ExcelJS = (await import("exceljs")).default;
     // The template builder too is loaded only now, when Download Template is clicked.
     const { buildDeviceWorkbook } = await import("./_deviceTemplate");
@@ -346,7 +365,7 @@ export default function BulkUploadPanel({ type }) {
 
     // Names not registered yet, per device type — the ones there is something to fill in for.
     const statusByType = await Promise.all(
-      devices.map((d) => getDeviceStatus(d.id).then(ok).catch(() => []))
+      chosen.map((d) => getDeviceStatus(d.id).then(ok).catch(() => []))
     );
 
     /*
@@ -380,7 +399,7 @@ export default function BulkUploadPanel({ type }) {
       title: config.title,
       columns: config.columns,
       example: config.example,
-      devices,
+      devices: chosen,
       models,
       statusByType,
       scope,
@@ -396,7 +415,8 @@ export default function BulkUploadPanel({ type }) {
     );
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${config.templateName}.xlsx`;
+    const suffix = chosen.length === 1 ? `_${chosen[0].device_name.replace(/[^A-Za-z0-9]+/g, "_")}` : "";
+    a.download = `${config.templateName}${suffix}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -1111,23 +1131,57 @@ export default function BulkUploadPanel({ type }) {
            * Reference No, so it is plain why that row is left out.
            */
           const skipped = rows.filter((r) => r.skip && !r.result);
+          /*
+           * One short line per row: "MAINT703 is already in Open Devices — you can't upload it
+           * again. Reference No DE26MAINT703280" — the Reference No a link that opens the device
+           * (the server's name for a server). The other rows upload as usual.
+           */
+          const linkCls = "normal-case font-semibold text-[#3482AE] underline hover:text-[#2a6d8f] disabled:opacity-50";
+          const skippedLine = (r) => {
+            const name = <span className="normal-case font-semibold">{nameOf(r) || `Excel row ${r.rowNo}`}</span>;
+            if (type === "device") {
+              const ref = r.skipInfo?.ref ?? r.skip.match(/Reference No ([^)\s]+)/)?.[1] ?? "";
+              const holder = r.skipInfo?.holder ?? r.skip.match(/assigned to (.+?) \(/)?.[1] ?? "";
+              return (
+                <>
+                  {name} is already {holder ? <>assigned to <span className="normal-case">{holder}</span></> : "in Open Devices"} —
+                  you can&apos;t upload it again.
+                  {ref && (
+                    <>
+                      {" "}Reference No{" "}
+                      <button
+                        type="button"
+                        className={linkCls}
+                        disabled={opening}
+                        onClick={() =>
+                          openRecord({ device_type: r.values.device_type, reference_no: ref, name: r.values.name })
+                        }
+                      >
+                        {ref}
+                      </button>
+                    </>
+                  )}
+                </>
+              );
+            }
+            if (type === "server") {
+              return (
+                <>
+                  <button type="button" className={linkCls} disabled={opening} onClick={() => openRecord(r.values)}>
+                    {nameOf(r)}
+                  </button>{" "}
+                  is already added — you can&apos;t upload it again.
+                </>
+              );
+            }
+            return <>{name} is already added — you can&apos;t upload it again.</>;
+          };
           const skippedNote = skipped.length > 0 && (
-            <div className="mt-3 rounded-[3px] border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
-              <p className="font-semibold">
-                {skipped.length === 1
-                  ? `Excel row ${skipped[0].rowNo} is already added — it will not be uploaded again:`
-                  : `${skipped.length} rows are already added — they will not be uploaded again:`}
-              </p>
-              <ul className="mt-1 max-h-32 list-disc overflow-y-auto pl-5">
-                {skipped.map((r) => (
-                  <li key={r.rowNo}>
-                    Excel row {r.rowNo}
-                    {nameOf(r) ? <> (<span className="normal-case">{nameOf(r)}</span>)</> : ""}: {r.skip}
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-1">Remove these rows from the sheet, or leave them — the other rows upload as usual.</p>
-            </div>
+            <ul className="mt-3 max-h-32 space-y-1 overflow-y-auto text-[12px] text-gray-700">
+              {skipped.map((r) => (
+                <li key={r.rowNo}>{skippedLine(r)}</li>
+              ))}
+            </ul>
           );
           if (!toFix.length) return skippedNote || null;
           const why = (r) => (r.errors.length ? r.errors.join("; ") : r.result?.message ?? "Not uploaded");

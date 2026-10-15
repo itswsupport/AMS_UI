@@ -22,7 +22,7 @@ export async function confirmDelete(title = "Are you sure?", text = "This cannot
     cancelButtonText: "Cancel",
     confirmButtonColor: "#e74c3c",
     cancelButtonColor: "#6b7280",
-    reverseButtons: true,
+    // The action first, Cancel beside it — the same order in every dialog of the app.
     focusCancel: true,
   });
   return result.isConfirmed;
@@ -76,7 +76,6 @@ export async function confirmDiscard(
     cancelButtonText: "Stay",
     confirmButtonColor: "#e74c3c",
     cancelButtonColor: "#6b7280",
-    reverseButtons: true,
     focusCancel: true,
   });
   return result.isConfirmed;
@@ -120,10 +119,42 @@ export async function confirmUpdate(changes = [], notes = [], what = "this devic
     cancelButtonText: "Cancel",
     confirmButtonColor: "#3482AE",
     cancelButtonColor: "#6b7280",
-    reverseButtons: true,
     focusCancel: true,
   });
   return result.isConfirmed;
+}
+
+/**
+ * UPDATE in an admin MASTER (RAM, Model, Reporting Person, …): "Do you want to update …?" with
+ * every field that changed, FROM the saved row TO what the form now holds — the same dialog as
+ * a device update. Nothing changed: says so and sends nothing. true only on "Yes, update".
+ *
+ * @param original  the row as loaded (the list's own row)
+ * @param body      what the form is about to send
+ * @param labels    { key: "Label" } — the fields to compare, in this order
+ * @param show      { key: (value) => text } — for ids and codes (device_id -> "Laptop")
+ * @param what      how the record is named in the title, e.g. 'RAM "16 GB"'
+ */
+export async function confirmMasterUpdate(original, body, { labels, show = {}, what = "this record" }) {
+  const text = (key, v) => {
+    if (show[key]) return show[key](v);
+    if (key === "status") return Number(v) === 1 ? "Active" : Number(v) === 0 ? "Inactive" : v;
+    return Array.isArray(v) ? v.join(", ") : v;
+  };
+  const norm = (v) => String(v ?? "").trim();
+  const changes = Object.entries(labels)
+    .map(([key, label]) => ({ label, from: text(key, original?.[key]), to: text(key, body[key]) }))
+    .filter((c) => norm(c.from) !== norm(c.to));
+  if (!changes.length) {
+    await Swal.fire({
+      icon: "info",
+      title: "Nothing to update",
+      text: "No field was changed.",
+      confirmButtonColor: "#3482AE",
+    });
+    return false;
+  }
+  return confirmUpdate(changes, [], what);
 }
 
 /** Brief confirmation after a save succeeds. */

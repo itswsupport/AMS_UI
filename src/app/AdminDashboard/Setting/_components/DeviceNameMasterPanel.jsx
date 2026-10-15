@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import DataTable from "@/components/ui/common/DataTable";
 import Modal from "@/components/ui/common/Modal";
-import { confirmDelete, deletedToast } from "@/lib/confirmDelete";
+import { confirmDelete, deletedToast, confirmMasterUpdate } from "@/lib/confirmDelete";
 import {
   getDeviceNameList,
   saveDeviceName,
@@ -183,6 +183,22 @@ export default function DeviceNameMasterPanel({ barColor }) {
         description: description.trim() || null,
         status,
       };
+      // UPDATE asks first, listing each changed field FROM → TO; Cancel sends nothing.
+      if (editingId) {
+        const original = rows.find((r) => r.id === editingId);
+        // Ids shown as names: from the dropdown lists, or the row's own name for one switched off since.
+        const nameOf = (list, field, fallback) => (id) =>
+          list.find((x) => String(x.id) === String(id))?.[field] ?? fallback(id) ?? id;
+        const ok = await confirmMasterUpdate(original, body, {
+          labels: { device_id: "Device", model_id: "Model", device_name: nameLabel, description: "Description", status: "Status" },
+          show: {
+            device_id: nameOf(devices, "device_name", (id) => (String(id) === String(original?.device_id) ? original?.device : null)),
+            model_id: nameOf(models, "model_name", (id) => (String(id) === String(original?.model_id) ? original?.model_name : null)),
+          },
+          what: `${nameLabel} "${original?.device_name ?? value}"`,
+        });
+        if (!ok) return;
+      }
       // Same form for both; the id is what turns a save into an update.
       const res = editingId
         ? await updateDeviceName({ ...body, id: editingId })

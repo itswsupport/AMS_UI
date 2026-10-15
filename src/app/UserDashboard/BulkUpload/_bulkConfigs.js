@@ -1,5 +1,13 @@
 import { bulkUploadDevices, bulkUploadServers, bulkUploadSoftware } from "@/services/bulkUploadService";
 import { deviceFieldRules } from "../LaptopDesktop/_deviceFields";
+import { FIELD_FORMATS, fieldFormatError } from "@/lib/fieldFormats";
+
+/** "PO No.: numbers only — "#21/129" is not allowed", for every code field of the row that is wrong. */
+const formatErrors = (row, columns, keep = () => true) =>
+  columns
+    .filter((c) => FIELD_FORMATS[c.key] && keep(c.key))
+    .map((c) => fieldFormatError(c.key, c.header, row[c.key]))
+    .filter(Boolean);
 
 /*
  * THE THREE EXCEL LAYOUTS for Bulk Upload — one per register. Each column is:
@@ -65,7 +73,7 @@ const DEVICE_COLUMNS = [
    * Worked out by the template — the asset sheet's formula =(TODAY()-Warranty End Date)/365+Total
    * Warranty, so it is today's age whenever the file is opened. Shown, never sent or stored.
    */
-  { header: "Age (Years)", key: "age", type: "number", auto: true },
+  { header: "Age (Year.Month)", key: "age", auto: true },
   { header: "Description", key: "description" },
   // In Use / In Spare, as the form's STATUS (stored as device_status) — every device type.
   { header: "Status", key: "device_status" },
@@ -174,12 +182,15 @@ const deviceCheck = (row, ctx) => {
   const found = ctx.registered?.get(String(row.name ?? "").trim().toLowerCase());
   const existing = typeof found === "string" ? { ref: found } : found;
   let skip = null;
+  // The same facts kept apart, so the page can show the Reference No as a link to the device.
+  let skipInfo = null;
   if (row.name && existing) {
     const ref = existing.ref ? ` (Reference No ${existing.ref})` : "";
     const holder = [existing.holderCode, existing.holderName].filter(Boolean).join(" - ");
     skip = holder
       ? `This device is already assigned to ${holder}${ref} — it cannot be added or assigned again`
       : `This device is already added${ref} and is Open — assign it from Open Devices, not from the sheet`;
+    skipInfo = { ref: existing.ref ?? "", holder };
   }
   // A USER's plant(s): one is filled in when the cell is empty; with several, one must be picked.
   let plant = row.plant;
@@ -204,6 +215,8 @@ const deviceCheck = (row, ctx) => {
     const filled = { ...row, plant, total_warranty_years: totalYears };
     const missing = rules.required.filter(({ key }) => String(filled[key] ?? "").trim() === "");
     if (missing.length) errors.push(`Required: ${missing.map((m) => m.label).join(", ")}`);
+    // Numbers only / letters and numbers only — as the form allows (fields this type has).
+    errors.push(...formatErrors(row, DEVICE_COLUMNS, (key) => rules.has(key)));
     if (row.warranty_start_date && row.last_date_of_warranty && row.last_date_of_warranty <= row.warranty_start_date) {
       errors.push("Warranty End Date must be after the Start Date");
     }
@@ -253,7 +266,7 @@ const deviceCheck = (row, ctx) => {
     assign_start_date: employee ? row.assign_start_date : null,
     ...ctx.changedBy,
   };
-  return { errors, payload, skip };
+  return { errors, payload, skip, skipInfo };
 };
 
 /**
@@ -268,6 +281,7 @@ const serverCheck = (row, ctx) => {
     errors.push(`Server "${name}" is not in Server Master — add it there first`);
   }
   const skip = name && ctx.registeredServers?.has(key) ? "This server is already added" : null;
+  errors.push(...formatErrors(row, SERVER_COLUMNS));
   // Warranty: the last date after the start, and the total worked out from the two (as the form does).
   if (row.warranty_start_date && row.last_date_of_warranty && row.last_date_of_warranty <= row.warranty_start_date) {
     errors.push("Last Date Of Warranty must be after the Warranty Start Date");

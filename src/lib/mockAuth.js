@@ -37,6 +37,16 @@ const MOCK_USERS = {
     department: DEPARTMENTS.OPERATIONS,
     email: "user@example.com",
   },
+  // ADMIN + USER together — both menus (Setting and User Dashboard) in one sidebar.
+  both: {
+    user_id: "both",
+    password: "both",
+    userFname: "Ganesh",
+    userLname: "Barathe",
+    role: `${ROLES.ADMIN},${ROLES.USER}`,
+    department: DEPARTMENTS.IT,
+    email: "both@example.com",
+  },
   viewer: {
     user_id: "viewer",
     password: "viewer",
@@ -71,6 +81,7 @@ export function mockLogin(userId, password) {
   return {
     ...user,
     name: `${user.userFname} ${user.userLname}`,
-    authorities: [{ authority: user.role }],
+    // One authority per role ("ADMIN,USER" gives two), as the real login sends them.
+    authorities: String(user.role).split(",").map((authority) => ({ authority })),
   };
 }

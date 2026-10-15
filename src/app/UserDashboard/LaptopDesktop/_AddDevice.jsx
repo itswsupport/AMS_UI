@@ -17,6 +17,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { getUserScope } from "@/lib/userScope";
 import { FIELDS_BY_DEVICE, deviceFieldRules } from "./_deviceFields";
+import { FIELD_FORMATS, cleanField, typedWarning } from "@/lib/fieldFormats";
 import { getDeviceList } from "@/services/deviceService";
 import { getDeviceNameList } from "@/services/deviceNameService";
 import { getModelList } from "@/services/modelService";
@@ -282,10 +283,25 @@ const selectStyles = (error) =>
       }
     : nativeSelectStyles;
 
-/** A plain text box. */
+/**
+ * A plain text box. With `format` (a key of FIELD_FORMATS) a character the field cannot hold is
+ * dropped as it is typed, and a warning says so right then — `"A" is not allowed — numbers only`
+ * — fading after a few seconds or at the next good key. Numbers-only fields get a number keypad.
+ */
 function TextField({
-  label, value, onChange, disabled, placeholder, maxLength = 150, hint, required = false, error,
+  label, value, onChange, disabled, placeholder, maxLength = 150, hint, required = false, error, format,
 }) {
+  const rule = format ? FIELD_FORMATS[format] : null;
+  const [typed, setTyped] = useState("");
+  const timer = useRef(null);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const handleChange = (e) => {
+    const warning = format ? typedWarning(format, e.target.value) : null;
+    clearTimeout(timer.current);
+    setTyped(warning ?? "");
+    if (warning) timer.current = setTimeout(() => setTyped(""), 3000);
+    onChange(e);
+  };
   return (
     <div>
       <label className={LABEL_CLS}>
@@ -294,14 +310,21 @@ function TextField({
       <input
         type="text"
         value={value}
-        onChange={onChange}
+        onChange={handleChange}
         disabled={disabled}
         placeholder={placeholder}
         maxLength={maxLength}
-        className={fieldCls(error)}
+        inputMode={rule?.chars === "0123456789" ? "numeric" : undefined}
+        className={fieldCls(error || typed)}
       />
       {hint && <p className="mt-1 text-[11px] text-gray-500">{hint}</p>}
-      <FieldError msg={error} />
+      {typed ? (
+        <p role="alert" className="mt-1 text-[11px] font-semibold text-red-600 normal-case">
+          {typed}
+        </p>
+      ) : (
+        <FieldError msg={error} />
+      )}
     </div>
   );
 }
@@ -595,8 +618,9 @@ export default function AddDevice({
     };
   }, [editing?.id]);
 
+  // A code field (PO No., Service Tag, …) keeps only the characters it may hold — see fieldFormats.
   const set = (key) => (e) => {
-    const value = e.target.value;
+    const value = cleanField(key, e.target.value);
     setForm((f) => ({ ...f, [key]: value }));
   };
 
@@ -1630,8 +1654,9 @@ export default function AddDevice({
               value={form.asset_code}
               onChange={set("asset_code")}
               disabled={specDisabled}
-              placeholder="Asset code on the case"
+              placeholder="e.g. 1900058"
               maxLength={100}
+              format="asset_code"
             />
           )}
           {shows("asset_sn") && (
@@ -1642,7 +1667,8 @@ export default function AddDevice({
               value={form.asset_sn}
               onChange={set("asset_sn")}
               disabled={specDisabled}
-              placeholder="Manufacturer serial"
+              placeholder="e.g. 54:13:79:68:A7:FD"
+              format="asset_sn"
             />
           )}
           {shows("service_tag") && (
@@ -1653,7 +1679,8 @@ export default function AddDevice({
               value={form.service_tag}
               onChange={set("service_tag")}
               disabled={specDisabled}
-              placeholder="Service tag"
+              placeholder="e.g. FJWG9F2"
+              format="service_tag"
             />
           )}
           {/*
@@ -1667,7 +1694,8 @@ export default function AddDevice({
               value={form.exp_service_code}
               onChange={set("exp_service_code")}
               disabled={disabled}
-              placeholder="Express service code"
+              placeholder="e.g. 33855098798"
+              format="exp_service_code"
             />
           )}
           {shows("po_no") && (
@@ -1678,8 +1706,9 @@ export default function AddDevice({
               value={form.po_no}
               onChange={set("po_no")}
               disabled={specDisabled}
-              placeholder="Purchase order"
+              placeholder="e.g. 410000074"
               maxLength={100}
+              format="po_no"
             />
           )}
         </Section>
@@ -1785,8 +1814,9 @@ export default function AddDevice({
               value={form.charger}
               onChange={set("charger")}
               disabled={disabled}
-              placeholder="Charger adaptor detail"
+              placeholder="e.g. CN-0DMR5H-CH200-769-039K-A02"
               maxLength={100}
+              format="charger"
             />
           )}
           <MasterSelect
@@ -1867,8 +1897,9 @@ export default function AddDevice({
               value={form.keyboard}
               onChange={set("keyboard")}
               disabled={disabled}
-              placeholder="Keyboard serial no."
+              placeholder="e.g. CN-0P5GY2-M6D00-3C9-06LW-A01"
               maxLength={150}
+              format="keyboard"
             />
           )}
           {isDesktop && (
@@ -1877,8 +1908,9 @@ export default function AddDevice({
               value={form.mouse}
               onChange={set("mouse")}
               disabled={disabled}
-              placeholder="Mouse serial no."
+              placeholder="e.g. CN-05NT8R-PRC00-62D-0648-A08"
               maxLength={150}
+              format="mouse"
             />
           )}
         </Section>
@@ -2072,14 +2104,14 @@ export default function AddDevice({
             <FieldError msg={errors.total_warranty_years} />
           </div>
           {/*
-            * AGE (YEARS) — the asset sheet's formula, =(TODAY()-Last Date)/365+Total Warranty:
-            * how old the device is today. Worked out every time the form opens; never stored.
+            * AGE as YEAR.MONTH ("5.01" = 5 years 1 month) — how old the device is today, from its
+            * warranty start. Worked out every time the form opens; never stored.
             */}
           <div>
-            <label className={LABEL_CLS}>Age (Years)</label>
+            <label className={LABEL_CLS}>Age (Year.Month)</label>
             <input
               type="text"
-              value={deviceAge(form.last_date_of_warranty, form.total_warranty_years)}
+              value={deviceAge(form.last_date_of_warranty, form.total_warranty_years, new Date(), form.warranty_start_date)}
               disabled
               placeholder="From the warranty"
               className={FIELD_CLS}

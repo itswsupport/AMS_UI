@@ -6,8 +6,8 @@ import Select, { components as rsComponents } from "react-select";
 import DataTable from "@/components/ui/common/DataTable";
 import Modal from "@/components/ui/common/Modal";
 import { nativeSelectStyles, nativeSelectComponents } from "@/components/masters/nativeLikeSelect";
-import { ROLE_OPTIONS } from "@/lib/permissions";
-import { confirmDelete, deletedToast } from "@/lib/confirmDelete";
+import { ROLE_OPTIONS, ROLES, parseRoles, joinRoles, formatRoles, rolesProblem } from "@/lib/permissions";
+import { confirmDelete, deletedToast, confirmMasterUpdate } from "@/lib/confirmDelete";
 /*
  * This screen's own writes are in reportingPersonService; the dropdown lists are read from
  * the services that own them.
@@ -101,14 +101,15 @@ const plantSelectStyles = {
  * `onChange(values)`. "All" after the last option ticks every one; unticking it clears them.
  * `noun` names them in the summary ("All device types (4)").
  */
-function CheckMultiSelect({ options, values, onChange, noun, placeholder, isDisabled = false }) {
+function CheckMultiSelect({ options, values, onChange, noun, placeholder, isDisabled = false, showAll = true }) {
   const picked = options.filter((o) => values.includes(o.value));
   const allOption = { value: ALL_PLANTS, label: "All", search: "all" };
-  const allPicked = options.length > 0 && picked.length === options.length;
+  // Roles have no "All": Viewer is never combined with the others.
+  const allPicked = showAll && options.length > 0 && picked.length === options.length;
   return (
     <Select
       isMulti
-      options={options.length ? [...options, allOption] : []}
+      options={options.length ? (showAll ? [...options, allOption] : options) : []}
       value={allPicked ? [...picked, allOption] : picked}
       onChange={(opts, meta) => {
         if (meta?.option?.value === ALL_PLANTS) {
@@ -155,7 +156,8 @@ export default function ReportingPersonPanel({ barColor }) {
   // Device Master ids, as strings — one or several.
   const [deviceIds, setDeviceIds] = useState([]);
   const [empCode, setEmpCode] = useState("");
-  const [role, setRole] = useState("");
+  // One role or several (Admin + User) — saved as "ADMIN,USER". Viewer is never combined.
+  const [roles, setRoles] = useState([]);
   const [description, setDescription] = useState("");
   // 1 = active, 0 = inactive. -1 (deleted) is never set from this form.
   const [status, setStatus] = useState(1);
@@ -249,7 +251,7 @@ export default function ReportingPersonPanel({ barColor }) {
     setPlantCodes([]);
     setDeviceIds([]);
     setEmpCode("");
-    setRole("");
+    setRoles([]);
     setDescription("");
     setStatus(1);
     setEditingId(null);
@@ -266,7 +268,7 @@ export default function ReportingPersonPanel({ barColor }) {
     setPlantCodes(saved);
     setDeviceIds(Array.isArray(row.device_ids) ? row.device_ids.map((id) => String(id)) : []);
     setEmpCode(row.emp_code ? String(row.emp_code) : "");
-    setRole(row.role ?? "");
+    setRoles(parseRoles(row.role));
     setDescription(row.description ?? "");
     setStatus(row.status ?? 1);
     setError("");
@@ -290,7 +292,8 @@ export default function ReportingPersonPanel({ barColor }) {
     if (plantCodes.length === 0) return setError("Select at least one plant.");
     if (deviceIds.length === 0) return setError("Select at least one device type.");
     if (!empCode) return setError("Select an employee.");
-    if (!role) return setError("Select a role.");
+    const roleProblem = rolesProblem(roles);
+    if (roleProblem) return setError(roleProblem);
 
     // In plant-code order, so "1003,1001" and "1001,1003" are saved the same.
     const picked = [...plantCodes].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
@@ -304,10 +307,41 @@ export default function ReportingPersonPanel({ barColor }) {
         plant_code: picked.join(","),
         device_ids: deviceIds.map(Number),
         emp_code: Number(empCode),
-        role,
+        // "ADMIN,USER" for both, "USER" for one — always in the same order.
+        role: joinRoles(roles),
         description: description.trim() || null,
         status,
       };
+      // UPDATE asks first, listing each changed field FROM → TO; Cancel sends nothing.
+      if (editingId) {
+        const original = rows.find((r) => r.id === editingId);
+        const sorted = (list) => [...list].sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
+        const deviceName = (id) => deviceTypeOptions.find((o) => o.value === String(id))?.label ?? id;
+        const employee = (code) => {
+          const e = employees.find((x) => String(x.emp_code) === String(code));
+          return code ? `${code} - ${e?.emp_name ?? (String(code) === String(original?.emp_code) ? original?.emp_name ?? "" : "")}` : "";
+        };
+        const ok = await confirmMasterUpdate(original, body, {
+          labels: {
+            company_name: "Company",
+            plant_code: "Plant",
+            device_ids: "Device Type",
+            emp_code: "Employee",
+            role: "Role",
+            description: "Description",
+            status: "Status",
+          },
+          show: {
+            // Order does not matter: "1003,1001" and "1001,1003" are the same plants.
+            plant_code: (v) => sorted(String(v ?? "").split(",").map((c) => c.trim()).filter(Boolean)).join(", "),
+            device_ids: (v) => sorted((Array.isArray(v) ? v : []).map(deviceName)).join(", "),
+            emp_code: employee,
+            role: formatRoles,
+          },
+          what: `reporting person ${employee(original?.emp_code ?? empCode)}`,
+        });
+        if (!ok) return;
+      }
       // Same form for both; the id is what turns a save into an update.
       const res = editingId
         ? await updateReportingPerson({ ...body, id: editingId })
@@ -376,7 +410,7 @@ export default function ReportingPersonPanel({ barColor }) {
      */
     { key: "emp_code", label: "EMP CODE", width: 110 },
     { key: "emp_name", label: "EMPLOYEE NAME" },
-    { key: "role", label: "ROLE" },
+    { key: "role", label: "ROLE", render: (row) => <span>{formatRoles(row.role) || row.role || "-"}</span> },
     { key: "description", label: "DESCRIPTION", render: (row) => <span>{row.description || "-"}</span> },
     {
       key: "status",
@@ -519,16 +553,25 @@ export default function ReportingPersonPanel({ barColor }) {
 
             <div>
               <label className={labelCls}>Role <span className="text-red-500">*</span></label>
-              <SearchableSelect
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                className={fieldCls}
-              >
-                <option value="">Select Role</option>
-                {ROLE_OPTIONS.map((r) => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
-                ))}
-              </SearchableSelect>
+              {/*
+                One role or several: tick User alone for a user, Admin + User for both (they
+                choose which to work in after login). Viewer stands alone — ticking it clears
+                the others, and ticking another clears Viewer.
+              */}
+              <CheckMultiSelect
+                options={ROLE_OPTIONS}
+                values={roles}
+                onChange={(next) =>
+                  setRoles((prev) => {
+                    const added = next.filter((r) => !prev.includes(r));
+                    if (added.includes(ROLES.VIEWER)) return [ROLES.VIEWER];
+                    return parseRoles(next.length > 1 ? next.filter((r) => r !== ROLES.VIEWER) : next);
+                  })
+                }
+                noun="roles"
+                placeholder="Select Role..."
+                showAll={false}
+              />
             </div>
 
             <div>

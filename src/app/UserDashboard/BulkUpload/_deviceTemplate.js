@@ -15,15 +15,37 @@
  * Warranty from the two warranty dates.
  *
  * @param ExcelJS the exceljs module
- * @param d       { title, columns, example, devices, models, statusByType, masters, scope }
+ * @param d       { title, columns, devices, models, statusByType, masters, scope }
  *                masters: { processors, rams, hdds, oses, systemTypes, warranties, ips,
  *                           deviceStatuses, plantRows, departmentRows, locationRows }
  * @returns       the exceljs Workbook
  */
 import { deviceFieldRules } from "../LaptopDesktop/_deviceFields";
+import { FIELD_FORMATS, onlyChars } from "../../../lib/fieldFormats";
 
 export function buildDeviceWorkbook(ExcelJS, d) {
-  const { title, columns, example, devices, models, statusByType, masters, scope } = d;
+  const { title, columns: allColumns, devices, models, statusByType, masters, scope } = d;
+
+  /*
+   * ONLY THE COLUMNS THESE DEVICE TYPES HAVE. A sheet for one type (Desktop) leaves out what the
+   * form hides for it (Charger, …); a sheet for every type keeps any column one of them uses.
+   * Missing columns are fine on upload — only Device Type, Model and Device Name must be there.
+   */
+  const typeNames = devices.map((t) => t.device_name);
+  const columns = typeNames.length
+    ? allColumns.filter((c) => c.auto || c.required || typeNames.some((n) => deviceFieldRules(n).has(c.key)))
+    : allColumns;
+
+  /*
+   * MANDATORY COLUMNS, marked " *" in the heading: required for every type in this sheet (for a
+   * one-type sheet, simply that type's mandatory fields — the Add Device form's). Calculated
+   * columns are filled in by the sheet, so never starred.
+   */
+  const requiredBy = (key) => typeNames.filter((n) => deviceFieldRules(n).required.some((f) => f.key === key));
+  const isMandatory = (c) =>
+    !c.auto &&
+    c.key !== "total_warranty_years" &&
+    (c.required || (typeNames.length > 0 && requiredBy(c.key).length === typeNames.length));
 
   // Distinct, trimmed, A→Z (numbers in number order).
   const tidy = (values) =>
@@ -49,14 +71,27 @@ export function buildDeviceWorkbook(ExcelJS, d) {
   const ws = wb.addWorksheet(title, { views: [{ state: "frozen", ySplit: 1 }] });
   const lists = wb.addWorksheet("Lists", { state: "veryHidden" });
 
-  // Headings, in the dark blue of the export sheets.
-  ws.columns = columns.map((c) => ({ header: c.header, key: c.key, width: Math.max(16, c.header.length + 4) }));
+  /*
+   * HEADINGS, all in the same dark blue, with a yellow " *" when the column is mandatory. The
+   * cells below carry no colour at all. The upload matches headings ignoring the " *".
+   */
+  ws.columns = columns.map((c) => ({ header: c.header, key: c.key, width: Math.max(16, c.header.length + 6) }));
   const head = ws.getRow(1);
-  head.height = 30;
-  head.eachCell((cell) => {
+  head.height = 32;
+  columns.forEach((c, i) => {
+    const cell = head.getCell(i + 1);
+    cell.value = isMandatory(c)
+      ? {
+          richText: [
+            { text: c.header, font: { bold: true, color: { argb: "FFFFFFFF" } } },
+            { text: " *", font: { bold: true, size: 13, color: { argb: "FFFFD966" } } },
+          ],
+        }
+      : c.header;
     cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF333399" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F3A93" } };
     cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    cell.border = { right: { style: "thin", color: { argb: "FFFFFFFF" } } };
   });
 
   // ---- the hidden lists ----
@@ -170,6 +205,8 @@ export function buildDeviceWorkbook(ExcelJS, d) {
 
   // ---- the data rows: dropdowns and calculated cells on rows 2–1001 ----
   const at = (key) => columns.findIndex((c) => c.key === key) + 1;
+  // A column left out of this sheet (a field its device type does not have) gets no rules.
+  const inSheet = (key) => at(key) > 0;
   const letter = (key) => colRef(at(key));
   const rule = (formula, ruleTitle, error) => ({
     type: "list",
@@ -180,7 +217,6 @@ export function buildDeviceWorkbook(ExcelJS, d) {
     errorTitle: ruleTitle,
     error,
   });
-  const CALC_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE6F2FF" } };
   const typeCol = letter("device_type");
   const modelCol = letter("model");
   const nameCol = letter("name");
@@ -192,7 +228,6 @@ export function buildDeviceWorkbook(ExcelJS, d) {
    * only. Excel cannot hide a column for one row, so in a row whose Device Type lacks a field,
    * that cell is shaded grey and refuses anything typed in.
    */
-  const typeNames = devices.map((t) => t.device_name);
   const notUsedBy = (key) => typeNames.filter((n) => !deviceFieldRules(n).has(key));
   const isOneOf = (types) => `OR(${types.map((n) => `$${typeCol}${FIRST}="${n}"`).join(",")})`;
   const notUsedNote = (label, types) => `${label} is not used for ${types.join(", ")} — leave it empty.`;
@@ -234,6 +269,7 @@ export function buildDeviceWorkbook(ExcelJS, d) {
   );
   Object.entries(simpleLists).forEach(([key, [rangeName, values]]) => {
     if (!values.length) return; // nothing loaded — leave the column free to type
+    if (!inSheet(key)) return; // not a field of this sheet's device type
     if (key === "assign_employee") return; // its own searchable dropdown, below
     const label = columns[at(key) - 1].header;
     fieldDropdown(key, rangeName, label, `Pick a ${label} from the list.`);
@@ -248,7 +284,7 @@ export function buildDeviceWorkbook(ExcelJS, d) {
    * Typed text has to be let through for the search to work, so a value that is not an
    * employee is not blocked here — the preview marks it ("Employee … not found") instead.
    */
-  if (simpleLists.assign_employee[1].length) {
+  if (simpleLists.assign_employee[1].length && inSheet("assign_employee")) {
     // Typing has to stay free for the search, so a printer row's cell is only shaded grey here
     // (the upload refuses an employee on a printer).
     validated.add("assign_employee");
@@ -320,104 +356,71 @@ export function buildDeviceWorkbook(ExcelJS, d) {
 
   // The assignment's Start Date: a real date too (any day — history can be entered late), and
   // nothing at all on a row whose type keeps no employee history (a printer).
-  const assignCol = letter("assign_start_date");
+  // (A printer-only sheet has no Start Date column at all.)
+  const assignCol = inSheet("assign_start_date") ? letter("assign_start_date") : null;
   const assignOff = notUsedBy("assign_start_date");
   const assignMsg = "Enter a real date as DD/MM/YYYY — when the employee got the device.";
-  ws.dataValidations.add(
-    `${assignCol}${FIRST}:${assignCol}${LAST}`,
-    assignOff.length
-      ? {
-          ...dateRule(null, "Start Date", `${assignMsg} ${notUsedNote("Start Date", assignOff)}`),
-          type: "custom",
-          operator: undefined,
-          formulae: [`AND(NOT(${isOneOf(assignOff)}),ISNUMBER(${assignCol}${FIRST}),${assignCol}${FIRST}>DATE(1990,1,1))`],
-        }
-      : dateRule(new Date(Date.UTC(1990, 0, 1)), "Start Date", assignMsg)
-  );
+  if (assignCol) {
+    ws.dataValidations.add(
+      `${assignCol}${FIRST}:${assignCol}${LAST}`,
+      assignOff.length
+        ? {
+            ...dateRule(null, "Start Date", `${assignMsg} ${notUsedNote("Start Date", assignOff)}`),
+            type: "custom",
+            operator: undefined,
+            formulae: [`AND(NOT(${isOneOf(assignOff)}),ISNUMBER(${assignCol}${FIRST}),${assignCol}${FIRST}>DATE(1990,1,1))`],
+          }
+        : dateRule(new Date(Date.UTC(1990, 0, 1)), "Start Date", assignMsg)
+    );
+  }
 
-  // Every other column a type may not have (typed in, no list): refused on such a row.
+  /*
+   * Every other typed-in column: refused on a row whose type does not have it, and a code field
+   * (PO No., Service Tag, …) refuses a character it may not hold — numbers only, letters and
+   * numbers only — the form's own rule (lib/fieldFormats.js). One rule per cell, so both in one.
+   */
   columns.forEach((c) => {
     if (c.auto || validated.has(c.key) || c.key === "total_warranty_years") return;
     const off = notUsedBy(c.key);
-    if (!off.length) return;
+    const fmt = FIELD_FORMATS[c.key];
+    if (!off.length && !fmt) return;
     const col = letter(c.key);
+    const parts = [];
+    if (off.length) parts.push(`NOT(${isOneOf(off)})`);
+    if (fmt) parts.push(onlyChars(`${col}${FIRST}`, fmt.chars));
+    const messages = [];
+    if (fmt) messages.push(`${fmt.hint} — e.g. ${fmt.sample}.`);
+    if (off.length) messages.push(notUsedNote(c.header, off));
     ws.dataValidations.add(`${col}${FIRST}:${col}${LAST}`, {
       type: "custom",
       allowBlank: true,
-      formulae: [`NOT(${isOneOf(off)})`],
+      formulae: [parts.length > 1 ? `AND(${parts.join(",")})` : parts[0]],
       showErrorMessage: true,
       errorStyle: "stop",
       errorTitle: c.header,
-      error: notUsedNote(c.header, off),
+      error: messages.join(" "),
+      ...(fmt
+        ? { showInputMessage: true, promptTitle: c.header, prompt: `${fmt.hint}. e.g. ${fmt.sample}` }
+        : {}),
     });
   });
 
   /*
-   * ONE COLOUR SCHEME FOR EVERY DEVICE TYPE — the same meaning in every row, whatever the type.
-   * It starts as soon as the row has a Device Type:
-   *
-   *   GREY   not used by this device type (cannot be filled — see the rules above)
-   *   YELLOW MANDATORY for this device type and still empty — fill it in
-   *   GREEN  filled in (entered)
-   *   WHITE  optional and empty
-   *
-   * The three never overlap (a cell is not used, or empty, or filled), so each cell shows
-   * exactly one colour. The mandatory list is the form's own (_deviceFields.js). Excel 2007+;
-   * the colour changes the moment the cell is filled or emptied.
+   * NO COLOURS ON THE CELLS — none for filled, empty, mandatory, not used or calculated: every
+   * cell stays plain. The * in the heading says what is mandatory; a field a row's type does not
+   * have is still refused by its rule above, just not shaded.
    */
-  const COLOR = {
-    notUsed: { fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFD9D9D9" } }, font: { color: { argb: "FF808080" } } },
-    mandatory: { fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFFFEB9C" } } },
-    filled: { fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFC6EFCE" } } },
-  };
-  const started = `$${typeCol}${FIRST}<>""`;
-  const requiredBy = (key) =>
-    typeNames.filter((n) => deviceFieldRules(n).required.some((f) => f.key === key));
-  columns.forEach((c) => {
-    // Calculated cells (Reference No, Company, Total Warranty) keep their light blue.
-    if (c.auto || c.key === "total_warranty_years") return;
-    const col = letter(c.key);
-    const cell = `${col}${FIRST}`;
-    const empty = `LEN(TRIM(${cell}))=0`;
-    const off = notUsedBy(c.key);
-    // Device Type / Model / Device Name are mandatory for every type; the rest per type.
-    const needs = c.required ? typeNames : requiredBy(c.key);
-    const rules = [];
-    if (off.length) {
-      rules.push({ type: "expression", priority: 1, formulae: [isOneOf(off)], style: COLOR.notUsed });
-    }
-    if (needs.length && c.key !== "device_type") {
-      const isNeeded = needs.length === typeNames.length ? started : `OR(${needs.map((n) => `$${typeCol}${FIRST}="${n}"`).join(",")})`;
-      rules.push({ type: "expression", priority: 2, formulae: [`AND(${started},${isNeeded},${empty})`], style: COLOR.mandatory });
-    }
-    rules.push({
-      type: "expression",
-      priority: 3,
-      formulae: [
-        c.key === "device_type"
-          ? `NOT(${empty})`
-          : off.length
-            ? `AND(${started},NOT(${empty}),NOT(${isOneOf(off)}))`
-            : `AND(${started},NOT(${empty}))`,
-      ],
-      style: COLOR.filled,
-    });
-    ws.addConditionalFormatting({ ref: `${col}${FIRST}:${col}${LAST}`, rules });
-  });
 
-  // The calculated cells, row by row.
+  // The calculated cells, row by row (plain, like every other cell).
   for (let r = FIRST; r <= LAST; r++) {
-    ws.getCell(`${assignCol}${r}`).numFmt = "dd/mm/yyyy";
+    if (assignCol) ws.getCell(`${assignCol}${r}`).numFmt = "dd/mm/yyyy";
     // Reference No — appears once the Device Name is picked, as in ADD DEVICE.
     // Company — appears once the Plant is picked, as beside Plant on the form.
     const company = ws.getCell(`${letter("company")}${r}`);
     company.value = { formula: `IF(${plantCol}${r}="","",IFERROR(VLOOKUP(${plantCol}${r},CompanyMap,2,FALSE),""))` };
-    company.fill = CALC_FILL;
 
     const ref = ws.getCell(`${letter("reference_no")}${r}`);
     ref.value = { formula: `IF(${nameCol}${r}="","",IFERROR(VLOOKUP(${nameCol}${r},RefMap,2,FALSE),""))` };
-    ref.fill = CALC_FILL;
-    ref.font = { bold: true, color: { argb: "FF3482AE" } };
 
     // Total Warranty — the form's rule: whole months to the day after the end, in years.
     const start = `${letter("warranty_start_date")}${r}`;
@@ -428,73 +431,22 @@ export function buildDeviceWorkbook(ExcelJS, d) {
     total.value = {
       formula: `IF(AND(ISNUMBER(${start}),ISNUMBER(${end}),${end}>${start}),ROUND(DATEDIF(${start},${end}+1,"m")/12,2),"")`,
     };
-    total.fill = CALC_FILL;
 
     /*
-     * AGE (YEARS) — the asset sheet's own formula, =(TODAY()-Last Date)/365+Total Warranty: how
-     * old the device is today (years since the warranty ended, plus its warranty years). TODAY()
-     * makes it current whenever the file is opened. Blank until both are there.
+     * AGE as YEAR.MONTH — how old the device is today, from its Warranty Start Date: whole years,
+     * a dot, the months left over as two digits (5.01 = 5 years 1 month, 5.11, 3.00, 0.07).
+     * Text, so 5.10 stays 5.10 (as a number it would show 5.1). TODAY() keeps it current every
+     * time the file is opened; a start date still to come counts as 0.00. Blank without a date.
      */
-    const totalRef = `${letter("total_warranty_years")}${r}`;
     const age = ws.getCell(`${letter("age")}${r}`);
     age.value = {
-      formula: `IF(AND(ISNUMBER(${end}),ISNUMBER(${totalRef})),ROUND((TODAY()-${end})/365+${totalRef},2),"")`,
+      formula:
+        `IF(ISNUMBER(${start}),IF(${start}>TODAY(),"0.00",` +
+        `DATEDIF(${start},TODAY(),"y")&"."&TEXT(DATEDIF(${start},TODAY(),"ym"),"00")),"")`,
     };
-    age.numFmt = "0.00";
-    age.fill = CALC_FILL;
+    age.alignment = { horizontal: "right" };
   }
 
-  /*
-   * ---- Instructions ---- one row per column, and for each device type whether it is
-   * MANDATORY, optional or not used — the very rules of the ADD DEVICE form (_deviceFields.js).
-   */
-  const help = wb.addWorksheet("Instructions");
-  const typeRules = devices.map((t) => ({ name: t.device_name, rules: deviceFieldRules(t.device_name) }));
-  help.columns = [{ width: 30 }, { width: 14 }, ...typeRules.map(() => ({ width: 14 })), { width: 30 }];
-  help.addRow(["Column", "Format", ...typeRules.map((t) => t.name.toUpperCase()), "Example"]);
-  columns.forEach((c) => {
-    const format = c.auto ? "Automatic" : c.type === "date" ? "DD/MM/YYYY" : c.type === "number" ? "Number" : "Text";
-    const perType = typeRules.map(({ rules }) => {
-      if (c.auto) return "Automatic";
-      if (c.required || rules.required.some((f) => f.key === c.key)) return "MANDATORY";
-      return rules.has(c.key) ? "Optional" : "Not used";
-    });
-    const row = help.addRow([c.header, format, ...perType, example[c.key] ?? ""]);
-    perType.forEach((v, i) => {
-      if (v === "MANDATORY") row.getCell(3 + i).font = { bold: true, color: { argb: "FFC00000" } };
-      if (v === "Not used") row.getCell(3 + i).font = { color: { argb: "FF999999" } };
-    });
-  });
-  help.addRow([]);
-  help.addRow(["MANDATORY fields must be filled in, or that row is not imported — as on the Add Device form."]);
-  help.addRow(["COLOURS — the same for every device type, once the row has a Device Type:"]);
-  [
-    ["   YELLOW", "Mandatory for this device type and still empty — fill it in", "FFFFEB9C"],
-    ["   GREEN", "Filled in", "FFC6EFCE"],
-    ["   GREY", "Not used for this device type — cannot be filled (as the form hides it)", "FFD9D9D9"],
-    ["   WHITE", "Optional and empty — fill it in only if needed", "FFFFFFFF"],
-  ].forEach(([name, meaning, argb]) => {
-    const row = help.addRow([name, meaning]);
-    row.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb } };
-    row.getCell(1).font = { bold: true };
-  });
-  help.addRow(["Light blue cells (Reference No, Company, Total Warranty) fill in by themselves — leave them."]);
-  help.addRow(["Assign To Employee + Start Date (Action History): optional. Filled in, the device is added and"]);
-  help.addRow(["assigned to that employee (Assigned); left empty, it is added Open. Not for printers."]);
-  [
-    "Device Type, Model and Device Name are dropdowns: pick them in that order.",
-    "Reference No (first column) fills in by itself once the Device Name is picked — leave it.",
-    "Plant, then Department and Location: pick the Plant first — they list that plant's own.",
-    "Total Warranty (In Years) is calculated from Warranty Start and End Date — leave it.",
-    "Processor, RAM, HDD, System Type, Operating System, IP Address, Device Status and",
-    "Warranty Status are dropdowns from their masters, the same lists as the Add Device form.",
-    "Device Name lists only names created in Device Name Master and not registered yet.",
-  ].forEach((line) => help.addRow([line]));
-  if (scope.limited && scope.plants?.length) help.addRow(["Your plant(s):", scope.plants.join(", ")]);
-  help.getRow(1).eachCell((cell) => {
-    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF333399" } };
-  });
-
+  // No Instructions sheet: the workbook is the Device sheet alone (and its hidden lists).
   return wb;
 }

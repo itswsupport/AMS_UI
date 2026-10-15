@@ -4,7 +4,7 @@ import { useContext } from "react";
 import { useRouter } from "next/navigation";
 import { AuthContext } from "@/context/AuthContext";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarHeader } from "@/components/ui/sidebar";
-import { getUserRole, ROLES } from "@/lib/permissions";
+import { getUserRole, getUserRoles, ROLES } from "@/lib/permissions";
 import { User, LogOut, LayoutDashboard, FileText, Eye, Settings, Home } from "lucide-react";
 
 /** Nav entries per role. The sidebar renders exactly one of these lists. */
@@ -55,7 +55,24 @@ export function AppSidebar() {
   const router = useRouter();
 
   const role = getUserRole(user);
-  const items = NAV[role] || NAV[ROLES.USER];
+  const roles = getUserRoles(user);
+  /*
+   * ONE MENU FOR EVERY ROLE HELD — Admin + User sees HOME, SETTING and USER DASHBOARD together.
+   * The main role's menu comes first; another role adds only the entries not already there by
+   * name (so one HOME, not two).
+   */
+  const items = (roles.length > 1 ? [role, ...roles.filter((r) => r !== role)] : [role])
+    .flatMap((r) => NAV[r] || [])
+    .filter((item, i, all) => all.findIndex((x) => x.label === item.label) === i);
+  if (!items.length) items.push(...NAV[ROLES.USER]);
+  // Admin + User in this order: HOME, USER DASHBOARD, SETTING (LOGOUT is added after).
+  if (roles.length > 1) {
+    const ORDER = ["HOME", "USER DASHBOARD", "SETTING"];
+    const at = (label) => (ORDER.includes(label) ? ORDER.indexOf(label) : ORDER.length);
+    items.sort((a, b) => at(a.label) - at(b.label));
+  }
+  // Under the name: the main role only — "[ADMIN]" for someone who is Admin + User.
+  const roleTag = role;
 
   /*
    * First + last name, e.g. "GANESH BARATHE" rather than just "GANESH".
@@ -104,7 +121,7 @@ export function AppSidebar() {
                 on the outer Sidebar — so anything here without its own colour renders black
                 against the blue. This line was doing exactly that. */}
             <div className="font-semibold leading-tight text-sm text-white">{displayName}</div>
-            <div className="text-xs text-white/70 uppercase tracking-wider">[{role}]</div>
+            <div className="text-xs text-white/70 uppercase tracking-wider">[{roleTag}]</div>
           </div>
         </div>
 

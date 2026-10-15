@@ -19,19 +19,27 @@ export function warrantyMonths(start, end) {
 }
 
 /**
- * AGE (in years) — the asset sheet's own formula, =(TODAY()-[Last Date Of Warrantee])/365+[Total
- * Warranty (In Years)]: the years since the warranty ended, plus the warranty's years — so how
- * old the device is today. Two decimals (9.99), as the sheet shows it. Worked out on every read,
- * never stored, since it changes each day. "" without both values.
+ * AGE as YEAR.MONTH — how old the device is today, from the start of its warranty (its purchase):
+ * whole years, a dot, then the months left over as two digits, 00 to 11. 5 years 1 month is
+ * "5.01", 5 years 11 months "5.11", 3 years "3.00", 7 months "0.07". Not a decimal: "5.10" is
+ * 5 years 10 months. Worked out on every read, never stored, since it changes each month.
+ *
+ * The start is the warranty start date; a record without one is worked back from its last date
+ * and its total (deriveWarrantyStart). "" when there is nothing to work it out from.
  */
-export function deviceAge(lastDate, totalYears, today = new Date()) {
-  const n = Number(totalYears);
-  if (!lastDate || totalYears === "" || totalYears === null || totalYears === undefined || !Number.isFinite(n)) return "";
-  const [y, m, d] = String(lastDate).slice(0, 10).split("-").map(Number);
-  if (!y || !m || !d) return "";
-  const last = Date.UTC(y, m - 1, d);
-  const now = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
-  return ((now - last) / 86400000 / 365 + n).toFixed(2);
+export function deviceAge(lastDate, totalYears, today = new Date(), startDate = "") {
+  const start = startDate || deriveWarrantyStart(lastDate, totalYears);
+  return yearMonthBetween(start, today);
+}
+
+/** "Y.MM" from a YYYY-MM-DD date to today: whole months, a day not reached yet not counted. */
+export function yearMonthBetween(start, today = new Date()) {
+  const [sy, sm, sd] = String(start ?? "").slice(0, 10).split("-").map(Number);
+  if (!sy || !sm || !sd) return "";
+  let months = (today.getFullYear() - sy) * 12 + (today.getMonth() + 1 - sm);
+  if (today.getDate() < sd) months -= 1;
+  if (months < 0) months = 0;
+  return `${Math.floor(months / 12)}.${String(months % 12).padStart(2, "0")}`;
 }
 
 /**

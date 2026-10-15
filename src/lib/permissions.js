@@ -91,38 +91,65 @@ export const ROLE_PERMISSIONS = {
   ],
 };
 
+
+/*
+ * MORE THAN ONE ROLE — an employee can hold ADMIN and USER together (ticked in Reporting Person,
+ * stored in ams_login_access.role as "ADMIN,USER"). They have BOTH at once: every permission of
+ * each role, and one sidebar with both menus (Setting and User Dashboard). No choosing, no
+ * switching. VIEWER is never combined with another role.
+ */
+
+/** The order roles are stored and shown in: "ADMIN,USER", "Admin, User". */
+const ROLE_ORDER = [ROLES.ADMIN, ROLES.USER, ROLES.VIEWER];
+
+/** "ADMIN,USER", "user", ["USER","ADMIN"] → ["ADMIN","USER"]: known roles only, no repeats. */
+export function parseRoles(value) {
+  const parts = Array.isArray(value) ? value : String(value ?? "").split(",");
+  const wanted = new Set(parts.map((r) => String(r?.authority ?? r).trim().toUpperCase()));
+  return ROLE_ORDER.filter((r) => wanted.has(r));
+}
+
+/** As saved: "ADMIN,USER". */
+export const joinRoles = (roles) => parseRoles(roles).join(",");
+
+/** As shown: "Admin, User". */
+export const formatRoles = (value) =>
+  parseRoles(value)
+    .map((r) => ROLE_LIST.find((x) => x.code === r)?.label ?? r)
+    .join(", ");
+
+/** Why this combination cannot be saved, or "" — VIEWER stands alone. */
+export function rolesProblem(roles) {
+  const list = parseRoles(roles);
+  if (!list.length) return "Select a role.";
+  if (list.includes(ROLES.VIEWER) && list.length > 1) return "Viewer cannot be combined with another role.";
+  return "";
+}
+
+/** Every role this person holds — from `roles`, a combined `role`, or the authorities. */
+export function getUserRoles(user) {
+  if (!user) return [];
+  return parseRoles([
+    ...(Array.isArray(user.roles) ? user.roles : []),
+    ...String(user.role ?? "").split(","),
+    ...(Array.isArray(user.authorities) ? user.authorities : []),
+    user.authority ?? "",
+  ]);
+}
+
+/** True when the person holds more than one role (Admin + User). */
+export const hasMultipleRoles = (user) => getUserRoles(user).length > 1;
+
 /**
- * Resolve the effective role for a user object.
- *
- * Accepts the several shapes a backend might hand back: an explicit `role`, a Spring
- * Security style `authorities` array, or a flat `authority` string. Unknown or missing
- * roles fall back to USER - the least privileged role, never the most.
+ * THE MAIN ROLE — the highest one held (ADMIN over VIEWER over USER). It decides the landing
+ * page and the plant / device-type limit: someone who is ADMIN as well as USER is not limited.
+ * What they may OPEN is every role's permissions together (getUserPermissions).
  */
 export function getUserRole(user) {
   if (!user) return ROLES.USER;
-
-  if (user.role) {
-    const role = String(user.role).toUpperCase();
-    if (ROLE_HIERARCHY[role]) return role;
-  }
-
-  if (Array.isArray(user.authorities) && user.authorities.length > 0) {
-    const authorities = user.authorities
-      .map((a) => String(a.authority || a).toUpperCase())
-      .filter(Boolean);
-    // Highest authority wins when a user carries more than one.
-    const priority = [ROLES.ADMIN, ROLES.VIEWER, ROLES.USER];
-    for (const role of priority) {
-      if (authorities.includes(role)) return role;
-    }
-  }
-
-  if (user.authority) {
-    const role = String(user.authority).toUpperCase();
-    if (ROLE_HIERARCHY[role]) return role;
-  }
-
-  return ROLES.USER;
+  const roles = getUserRoles(user);
+  const priority = [ROLES.ADMIN, ROLES.VIEWER, ROLES.USER];
+  return priority.find((r) => roles.includes(r)) ?? ROLES.USER;
 }
 
 /** Every authority string attached to the user, uppercased. */
@@ -137,8 +164,9 @@ export function getUserAuthorities(user) {
 }
 
 export function getUserPermissions(user) {
-  const role = getUserRole(user);
-  return ROLE_PERMISSIONS[role] || [];
+  const roles = getUserRoles(user);
+  const list = roles.length ? roles : [getUserRole(user)];
+  return [...new Set(list.flatMap((r) => ROLE_PERMISSIONS[r] || []))];
 }
 
 export function hasPermission(user, permission) {

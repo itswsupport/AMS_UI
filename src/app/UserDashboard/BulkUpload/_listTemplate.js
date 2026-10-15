@@ -18,6 +18,8 @@
  *
  * @returns the exceljs Workbook
  */
+import { FIELD_FORMATS, onlyChars } from "../../../lib/fieldFormats";
+
 export function buildListWorkbook(
   ExcelJS,
   { title, columns, example = {}, lists = {}, notes = [], unique = null, linked = {}, warrantyTotal = null }
@@ -167,6 +169,26 @@ export function buildListWorkbook(
     });
   }
 
+  // ---- code columns (Server S/N, …): only the characters the form takes (lib/fieldFormats.js) ----
+  columns
+    .filter((c) => FIELD_FORMATS[c.key] && !lists[c.key]?.length && !linked[c.key] && c.type !== "date")
+    .forEach((c) => {
+      const fmt = FIELD_FORMATS[c.key];
+      const l = letter(c.key);
+      ws.dataValidations.add(`${l}${FIRST}:${l}${LAST}`, {
+        type: "custom",
+        allowBlank: true,
+        formulae: [onlyChars(`${l}${FIRST}`, fmt.chars)],
+        showErrorMessage: true,
+        errorStyle: "stop",
+        errorTitle: c.header,
+        error: `${fmt.hint} — e.g. ${fmt.sample}.`,
+        showInputMessage: true,
+        promptTitle: c.header,
+        prompt: `${fmt.hint}. e.g. ${fmt.sample}`,
+      });
+    });
+
   // ---- the same value twice in the unique column: both rows shaded red, with red text ----
   if (unique && columns.some((c) => c.key === unique)) {
     const l = letter(unique);
@@ -199,10 +221,17 @@ export function buildListWorkbook(
         ? `Pick from the list (by ${columns.find((x) => x.key === linked[c.key].parent)?.header ?? "parent"})`
       : c.type === "date"
         ? "DD/MM/YYYY"
+        : FIELD_FORMATS[c.key]
+          ? FIELD_FORMATS[c.key].hint
         : c.type === "number" || c.type === "integer"
           ? "Number"
           : "Text";
-    const row = help.addRow([c.header, c.required ? "MANDATORY" : "Optional", format, example[c.key] ?? ""]);
+    const row = help.addRow([
+      c.header,
+      c.required ? "MANDATORY" : "Optional",
+      format,
+      example[c.key] ?? FIELD_FORMATS[c.key]?.sample ?? "",
+    ]);
     if (c.required) row.getCell(2).font = { bold: true, color: { argb: "FFC00000" } };
   });
   help.addRow([]);

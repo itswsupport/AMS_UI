@@ -6,24 +6,28 @@ import { getUserRole, dashboardForRole } from "@/lib/permissions";
 import { MOCK_AUTH_ENABLED, MOCK_CREDENTIALS } from "@/lib/mockAuth";
 import { BASE_PATH } from "@/config/api";
 
+/*
+ * A FULL page load into THIS person's dashboard, not an in-app route change: nothing the
+ * previous user had on screen (lists, counts, their menu) survives into the new session —
+ * the new user sees only their own dashboard, straight away.
+ */
+const goToDashboard = (role) => window.location.replace(`${BASE_PATH}${dashboardForRole(role)}/`);
+
 export default function LoginPage() {
   const { login } = useAuth();
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
   const onSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setBusy(true);
     try {
       const user = await login(userId, password);
-      /*
-       * A FULL page load into THIS person's dashboard, not an in-app route change: nothing the
-       * previous user had on screen (lists, counts, their menu) survives into the new session —
-       * the new user sees only their own dashboard, straight away.
-       */
-      window.location.replace(`${BASE_PATH}${dashboardForRole(getUserRole(user))}/`);
+      // Admin + User lands on the admin's page; both menus are in the sidebar from there.
+      goToDashboard(getUserRole(user));
       return;
     } catch (err) {
       setError(err.message || "Login failed");

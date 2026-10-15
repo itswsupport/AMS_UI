@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import DataTable from "@/components/ui/common/DataTable";
 import Modal from "@/components/ui/common/Modal";
-import { confirmDelete, deletedToast } from "@/lib/confirmDelete";
+import { confirmDelete, deletedToast, confirmMasterUpdate } from "@/lib/confirmDelete";
 import { getModelList, saveModel, updateModel, deleteModel } from "@/services/modelService";
 import { getDeviceList } from "@/services/deviceService";
 
@@ -142,6 +142,20 @@ export default function ModelMasterPanel({ barColor }) {
         description: description.trim() || null,
         status,
       };
+      // UPDATE asks first, listing each changed field FROM → TO; Cancel sends nothing.
+      if (editingId) {
+        const original = rows.find((r) => r.id === editingId);
+        const deviceText = (id) =>
+          devices.find((d) => String(d.id) === String(id))?.device_name ??
+          (String(id) === String(original?.device_id) ? original?.device_name : null) ??
+          id;
+        const ok = await confirmMasterUpdate(original, body, {
+          labels: { device_id: "Device", model_name: nameLabel, description: "Description", status: "Status" },
+          show: { device_id: deviceText },
+          what: `${nameLabel} "${original?.model_name ?? value}"`,
+        });
+        if (!ok) return;
+      }
       // Same form for both; the id is what turns a save into an update.
       const res = editingId
         ? await updateModel({ ...body, id: editingId })

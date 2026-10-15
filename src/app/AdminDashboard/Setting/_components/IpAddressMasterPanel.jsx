@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import DataTable from "@/components/ui/common/DataTable";
 import Modal from "@/components/ui/common/Modal";
-import { confirmDelete, deletedToast } from "@/lib/confirmDelete";
+import { confirmDelete, deletedToast, confirmMasterUpdate } from "@/lib/confirmDelete";
 import { getIpAddressList, saveIpAddress, updateIpAddress, deleteIpAddress } from "@/services/ipAddressService";
 
 import SearchableSelect from "@/components/ui/common/SearchableSelect";
@@ -121,6 +121,15 @@ export default function IpAddressMasterPanel({ barColor }) {
         description: description.trim() || null,
         status,
       };
+      // UPDATE asks first, listing each changed field FROM → TO; Cancel sends nothing.
+      if (editingId) {
+        const original = rows.find((r) => r.id === editingId);
+        const ok = await confirmMasterUpdate(original, body, {
+          labels: { ip_address: nameLabel, description: "Description", status: "Status" },
+          what: `${nameLabel} "${original?.ip_address ?? value}"`,
+        });
+        if (!ok) return;
+      }
       // Same form for both; the id is what turns a save into an update.
       const res = editingId
         ? await updateIpAddress({ ...body, id: editingId })

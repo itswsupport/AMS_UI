@@ -64,7 +64,9 @@ export function parseSheet(XLSX, data, config, ctx) {
      * matter and would only hide the real reason.
      */
     const skip = checked.skip || null;
-    rows.push({ rowNo, values, payload: checked.payload, errors: skip ? [] : errors, skip, result: null });
+    // skipInfo: { ref, holder } of a device already added — its Reference No is shown as a link.
+    const skipInfo = skip ? checked.skipInfo ?? null : null;
+    rows.push({ rowNo, values, payload: checked.payload, errors: skip ? [] : errors, skip, skipInfo, result: null });
   });
   return { rows };
 }

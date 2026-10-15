@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { ChevronLeft } from "lucide-react";
 import Select from "react-select";
 import {
@@ -16,6 +16,7 @@ import {
   getServerChangeLog,
 } from "@/services/serverAssetService";
 import { useAuth } from "@/context/AuthContext";
+import { cleanField, typedWarning } from "@/lib/fieldFormats";
 import UserLogTable from "@/components/ui/common/UserLogTable";
 // The NAME dropdown is the admin's Server Master, not free text.
 import { getServerList } from "@/services/serverService";
@@ -171,19 +172,38 @@ function Section({ title, children }) {
   );
 }
 
-function TextField({ label, value, onChange, disabled, placeholder, maxLength = 150 }) {
+/**
+ * With `format` (a key of FIELD_FORMATS) a refused character is dropped as typed and a warning
+ * says so right then, fading after a few seconds — as on ADD DEVICE.
+ */
+function TextField({ label, value, onChange, disabled, placeholder, maxLength = 150, format }) {
+  const [typed, setTyped] = useState("");
+  const timer = useRef(null);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const handleChange = (e) => {
+    const warning = format ? typedWarning(format, e.target.value) : null;
+    clearTimeout(timer.current);
+    setTyped(warning ?? "");
+    if (warning) timer.current = setTimeout(() => setTyped(""), 3000);
+    onChange(e);
+  };
   return (
     <div>
       <label className={LABEL_CLS}>{label}</label>
       <input
         type="text"
         value={value}
-        onChange={onChange}
+        onChange={handleChange}
         disabled={disabled}
         placeholder={placeholder}
         maxLength={maxLength}
-        className={FIELD_CLS}
+        className={`${FIELD_CLS}${typed ? " border-red-500!" : ""}`}
       />
+      {typed && (
+        <p role="alert" className="mt-1 text-[11px] font-semibold text-red-600 normal-case">
+          {typed}
+        </p>
+      )}
     </div>
   );
 }
@@ -343,8 +363,9 @@ export default function AddServer({
     setError("");
   }, [editing]);
 
+  // S/N keeps only the characters it may hold — see fieldFormats.
   const set = (key) => (e) => {
-    const value = e.target.value;
+    const value = cleanField(key, e.target.value);
     setForm((f) => ({ ...f, [key]: value }));
   };
 
@@ -669,8 +690,9 @@ export default function AddServer({
             value={form.serial_no}
             onChange={set("serial_no")}
             disabled={disabled}
-            placeholder="Serial number"
+            placeholder="e.g. SGH910WPLN"
             maxLength={100}
+            format="serial_no"
           />
         </Section>
 

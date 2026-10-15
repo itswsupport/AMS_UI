@@ -22,7 +22,7 @@ import {
   updateSubCategory,
   deleteSubCategory,
 } from "@/services/subCategoryService";
-import { confirmDelete, deletedToast, warnAlert, savedToast } from "@/lib/confirmDelete";
+import { confirmDelete, deletedToast, warnAlert, savedToast, confirmMasterUpdate } from "@/lib/confirmDelete";
 
 import SearchableSelect from "@/components/ui/common/SearchableSelect";
 /**
@@ -201,6 +201,20 @@ export default function SubCategoryMasterPanel({ barColor }) {
     setError("");
     try {
       const body = { category_id: Number(categoryId), sub_category_name: name, description: description.trim() || null, status };
+      // UPDATE asks first, listing each changed field FROM → TO; Cancel sends nothing.
+      if (editingId) {
+        const original = rows.find((r) => r.id === editingId);
+        const ok = await confirmMasterUpdate(original, body, {
+          labels: { category_id: "Category", sub_category_name: "Sub Category Name", description: "Description", status: "Status" },
+          show: {
+            category_id: (id) =>
+              categories.find((c) => String(c.id) === String(id))?.category_name ??
+              (String(id) === String(original?.category_id) ? original?.category_name : id),
+          },
+          what: `sub category "${original?.sub_category_name ?? name}"`,
+        });
+        if (!ok) return;
+      }
       // Same form for both; the id is what turns a save into an update.
       const res = editingId
         ? await updateSubCategory({ ...body, id: editingId })
