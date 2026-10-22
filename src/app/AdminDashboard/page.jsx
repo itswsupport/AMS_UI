@@ -11,7 +11,7 @@ import PageTitle from "@/components/ui/common/PageTitle";
  */
 export default function AdminDashboard() {
   return (
-    <div className="p-6">
+    <div className="p-3 sm:p-6">
       <PageTitle title="ADMIN DASHBOARD" showBack={false} />
     </div>
   );

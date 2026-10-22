@@ -53,10 +53,10 @@ export default function UserDashboard() {
   ];
 
   return (
-    <div className="p-6">
+    <div className="p-3 sm:p-6">
       <PageTitle title="User Dashboard" showBack={false} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         {cards.map((card) => (
           <DashboardCard
             key={card.key}

@@ -144,7 +144,9 @@ export default function LocationMasterPanel({ barColor }) {
       }
 
       closeForm();
-      savedToast(saved.length === 1 ? "Location added" : `Location added for ${saved.length} plants`);
+      savedToast(
+        saved.length === 1 ? "Location added successfully" : `Location added successfully for ${saved.length} plants`
+      );
     } catch {
       await warnAlert("Could not reach the server", "Check the connection and try again.");
       setError("Could not reach the server.");
@@ -185,7 +187,7 @@ export default function LocationMasterPanel({ barColor }) {
       </div>
 
       <Modal open={showForm} title="Add Location" barColor={barColor} onClose={closeForm}>
-        <form onSubmit={onSubmit} className="p-6">
+        <form onSubmit={onSubmit} className="p-4 sm:p-6">
           {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
           {loadError && <p className="mb-3 text-sm text-amber-600">{loadError}</p>}
 
@@ -242,7 +244,7 @@ export default function LocationMasterPanel({ barColor }) {
 
           </div>
 
-          <div className="mt-4 flex justify-center gap-2">
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
             <button type="submit" disabled={saving}
               className="px-5 py-2 bg-[#3482AE] text-white text-sm font-semibold rounded-sm hover:bg-[#2a6d8f] disabled:opacity-50">
               {saving ? "SAVING..." : "SAVE"}

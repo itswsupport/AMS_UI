@@ -3,11 +3,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import Select, { components as rsComponents } from "react-select";
+import Swal from "sweetalert2";
 import DataTable from "@/components/ui/common/DataTable";
 import Modal from "@/components/ui/common/Modal";
 import { nativeSelectStyles, nativeSelectComponents } from "@/components/masters/nativeLikeSelect";
 import { ROLE_OPTIONS, ROLES, parseRoles, joinRoles, formatRoles, rolesProblem } from "@/lib/permissions";
-import { confirmDelete, deletedToast, confirmMasterUpdate } from "@/lib/confirmDelete";
+import { confirmDelete, deletedToast, confirmMasterUpdate, savedToast } from "@/lib/confirmDelete";
 /*
  * This screen's own writes are in reportingPersonService; the dropdown lists are read from
  * the services that own them.
@@ -88,8 +89,10 @@ const plantSelectStyles = {
   // A light tint for a ticked plant — the checkbox already says it is chosen.
   option: (base, state) => ({
     ...nativeSelectStyles.option(base, state),
-    backgroundColor: state.isFocused ? "#eef4f8" : "#ffffff",
-    color: state.data.value === ALL_PLANTS ? "#3482AE" : "#111827",
+    backgroundColor: state.isFocused && !state.isDisabled ? "#eef4f8" : "#ffffff",
+    // A choice that cannot be ticked now (Viewer with Admin / User) reads as greyed out.
+    color: state.isDisabled ? "#9ca3af" : state.data.value === ALL_PLANTS ? "#3482AE" : "#111827",
+    cursor: state.isDisabled ? "not-allowed" : base.cursor,
     fontWeight: state.isSelected || state.data.value === ALL_PLANTS ? 600 : 400,
     // "All" sits under the last plant, set apart by a line.
     borderTop: state.data.value === ALL_PLANTS ? "1px solid #e5e7eb" : base.borderTop,
@@ -101,7 +104,9 @@ const plantSelectStyles = {
  * `onChange(values)`. "All" after the last option ticks every one; unticking it clears them.
  * `noun` names them in the summary ("All device types (4)").
  */
-function CheckMultiSelect({ options, values, onChange, noun, placeholder, isDisabled = false, showAll = true }) {
+function CheckMultiSelect({
+  options, values, onChange, noun, placeholder, isDisabled = false, showAll = true, isOptionDisabled,
+}) {
   const picked = options.filter((o) => values.includes(o.value));
   const allOption = { value: ALL_PLANTS, label: "All", search: "all" };
   // Roles have no "All": Viewer is never combined with the others.
@@ -119,6 +124,8 @@ function CheckMultiSelect({ options, values, onChange, noun, placeholder, isDisa
         onChange((opts ?? []).filter((o) => o.value !== ALL_PLANTS).map((o) => o.value));
       }}
       isDisabled={isDisabled}
+      // A choice that cannot go with what is ticked (Viewer with Admin / User) is greyed out.
+      isOptionDisabled={isOptionDisabled}
       // The summary stands in for the tags (shown through the placeholder).
       controlShouldRenderValue={false}
       placeholder={summarisePlants(picked.map((o) => o.label), options.length, noun) || placeholder}
@@ -234,6 +241,12 @@ export default function ReportingPersonPanel({ barColor }) {
   });
 
   /*
+   * PLANT-WISE ACCESS FOR EVERY ROLE — Admin included: the plants and device types are picked
+   * here by hand, and the person then works only on those (userScope.js, and the backend's
+   * device check). "All" at the end of each list still ticks every one when that is wanted.
+   */
+
+  /*
    * 851 employees is far too many for a plain <select>, so the employee field is a
    * react-select combobox: typing filters the list in place and the matches drop down under
    * the box, rather than a search input feeding a second control below it.
@@ -295,6 +308,64 @@ export default function ReportingPersonPanel({ barColor }) {
     const roleProblem = rolesProblem(roles);
     if (roleProblem) return setError(roleProblem);
 
+    /*
+     * ONE ENTRY PER EMPLOYEE. ADDING someone who already has access would REPLACE their entry —
+     * their plants 1002, 1003 lost for the 1006 picked now. So it is refused, saying what they
+     * have, with EDIT THEIR ACCESS opening their own entry to add the plant there.
+     */
+    if (!editingId) {
+      const existing = rows.find((r) => String(r.emp_code) === String(empCode));
+      if (existing) {
+        const esc = (v) => String(v ?? "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
+        const who = [existing.emp_code, existing.emp_name].filter(Boolean).join(" - ");
+        const plants = String(existing.plant_code ?? "").split(",").map((c) => c.trim()).filter(Boolean).join(", ");
+        const types =
+          existing.device_names ||
+          (existing.device_ids ?? [])
+            .map((id) => deviceTypeOptions.find((o) => o.value === String(id))?.label ?? id)
+            .join(", ");
+        const go = await Swal.fire({
+          icon: "warning",
+          title: "This employee already has access",
+          html:
+            `<p><b>${esc(who)}</b> already has AMS access:</p>` +
+            `<p style="margin-top:8px;text-align:left;font-size:13px">` +
+            `Role: <b>${esc(formatRoles(existing.role) || existing.role)}</b><br/>` +
+            `Plant(s): <b>${esc(plants || "-")}</b><br/>` +
+            `Device type(s): <b>${esc(types || "-")}</b></p>` +
+            `<p style="margin-top:8px;font-size:13px">To add a plant, a device type or a role, edit their existing access.</p>`,
+          showCancelButton: true,
+          confirmButtonText: "Edit their access",
+          cancelButtonText: "Cancel",
+          confirmButtonColor: "#3482AE",
+          cancelButtonColor: "#6b7280",
+        });
+        if (go.isConfirmed) onEdit(existing);
+        return;
+      }
+    }
+
+    /*
+     * VIEWER STANDS ALONE ACROSS EVERY ENTRY of this employee, not only within this one: an
+     * employee already Viewer in another Reporting Person entry cannot be given Admin / User
+     * here, and one already Admin / User elsewhere cannot be made Viewer — together they would
+     * still hold Viewer + User or Viewer + Admin.
+     */
+    const otherRoles = rows
+      .filter((r) => r.id !== editingId && String(r.emp_code) === String(empCode))
+      .flatMap((r) => parseRoles(r.role));
+    const clash = rolesProblem([...new Set([...roles, ...otherRoles])]);
+    if (otherRoles.length && clash) {
+      const emp = employees.find((e) => String(e.emp_code) === String(empCode));
+      const who = [empCode, emp?.emp_name].filter(Boolean).join(" - ");
+      const theirs = formatRoles([...new Set(otherRoles)]);
+      return setError(
+        roles.includes(ROLES.VIEWER)
+          ? `${who} is already ${theirs} in another entry — Viewer cannot be added with Admin or User.`
+          : `${who} is already Viewer in another entry — Admin or User cannot be added with Viewer.`
+      );
+    }
+
     // In plant-code order, so "1003,1001" and "1001,1003" are saved the same.
     const picked = [...plantCodes].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
@@ -353,6 +424,7 @@ export default function ReportingPersonPanel({ barColor }) {
       }
       closeForm();
       await loadRows();
+      savedToast(`Reporting person ${editingId ? "updated" : "added"} successfully`);
     } catch {
       setError("Could not reach the server.");
     } finally {
@@ -468,7 +540,7 @@ export default function ReportingPersonPanel({ barColor }) {
         barColor={barColor}
         onClose={closeForm}
       >
-        <form onSubmit={onSubmit} className="p-6">
+        <form onSubmit={onSubmit} className="p-4 sm:p-6">
           {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
           {loadError && <p className="mb-3 text-sm text-amber-600">{loadError}</p>}
 
@@ -554,24 +626,30 @@ export default function ReportingPersonPanel({ barColor }) {
             <div>
               <label className={labelCls}>Role <span className="text-red-500">*</span></label>
               {/*
-                One role or several: tick User alone for a user, Admin + User for both (they
-                choose which to work in after login). Viewer stands alone — ticking it clears
-                the others, and ticking another clears Viewer.
+                One role or several: User alone, Admin alone, or Admin + User together. VIEWER
+                STANDS ALONE: with Viewer ticked, Admin and User are greyed out and cannot be
+                ticked; with Admin or User ticked, Viewer is greyed out. Untick to change.
               */}
               <CheckMultiSelect
                 options={ROLE_OPTIONS}
                 values={roles}
-                onChange={(next) =>
-                  setRoles((prev) => {
-                    const added = next.filter((r) => !prev.includes(r));
-                    if (added.includes(ROLES.VIEWER)) return [ROLES.VIEWER];
-                    return parseRoles(next.length > 1 ? next.filter((r) => r !== ROLES.VIEWER) : next);
-                  })
+                onChange={(next) => setRoles(parseRoles(next))}
+                isOptionDisabled={(opt) =>
+                  roles.includes(ROLES.VIEWER)
+                    ? opt.value !== ROLES.VIEWER
+                    : roles.length > 0 && opt.value === ROLES.VIEWER
                 }
                 noun="roles"
                 placeholder="Select Role..."
                 showAll={false}
               />
+              <p className="mt-1 text-[11px] text-gray-500 normal-case">
+                {roles.includes(ROLES.VIEWER)
+                  ? "Viewer is view-only — no other role can be added with it."
+                  : roles.length
+                    ? "Viewer cannot be added with Admin or User."
+                    : "Admin and User can be given together; Viewer only on its own."}
+              </p>
             </div>
 
             <div>
@@ -598,7 +676,7 @@ export default function ReportingPersonPanel({ barColor }) {
             </div>
           </div>
 
-          <div className="mt-4 flex justify-center gap-2">
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
             <button type="submit" disabled={saving}
               className="px-5 py-2 bg-[#3482AE] text-white text-sm font-semibold rounded-sm hover:bg-[#2a6d8f] disabled:opacity-50">
               {saving ? "SAVING..." : editingId ? "UPDATE" : "SAVE"}

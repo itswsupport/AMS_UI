@@ -16,7 +16,7 @@ import {
 } from "@/services/assetService";
 import { useAuth } from "@/context/AuthContext";
 import { getUserScope } from "@/lib/userScope";
-import { FIELDS_BY_DEVICE, deviceFieldRules } from "./_deviceFields";
+import { FIELDS_BY_DEVICE, deviceFieldRules, isOptionalFor } from "./_deviceFields";
 import { FIELD_FORMATS, cleanField, typedWarning } from "@/lib/fieldFormats";
 import { getDeviceList } from "@/services/deviceService";
 import { getDeviceNameList } from "@/services/deviceNameService";
@@ -296,7 +296,7 @@ function TextField({
   const timer = useRef(null);
   useEffect(() => () => clearTimeout(timer.current), []);
   const handleChange = (e) => {
-    const warning = format ? typedWarning(format, e.target.value) : null;
+    const warning = format ? typedWarning(format, e.target.value, label) : null;
     clearTimeout(timer.current);
     setTyped(warning ?? "");
     if (warning) timer.current = setTimeout(() => setTyped(""), 3000);
@@ -332,6 +332,8 @@ function MasterSelect({
   label, options, value, onChange, disabled, master, placeholder, required = false, error,
   // Optional px height for the open list (default: the shared 168px); it scrolls inside.
   maxMenuHeight,
+  // "bottom" (always below) unless the field is the last of the form — then "auto".
+  menuPlacement = "bottom",
 }) {
   const base = selectStyles(error);
   const styles = maxMenuHeight
@@ -353,7 +355,7 @@ function MasterSelect({
         isClearable
         placeholder={placeholder ?? `Search ${label}...`}
         noOptionsMessage={() => `No ${label.toLowerCase()} matches that`}
-        menuPlacement="bottom"
+        menuPlacement={menuPlacement}
         menuPortalTarget={typeof document !== "undefined" ? document.body : null}
         components={nativeSelectComponents}
         styles={styles}
@@ -471,6 +473,8 @@ export default function AddDevice({
    * same name. Cleared by reset and whenever the form is handed a different row.
    */
   const [justSavedId, setJustSavedId] = useState(null);
+  /** The Reference No the backend gave the device just saved — shown in the success popup. */
+  const savedRefNo = useRef("");
 
   const [plants, setPlants] = useState([]);
   // Location Master rows: { plant_code, location_name, … }.
@@ -1062,6 +1066,9 @@ export default function AddDevice({
         role: "assigned",
         code: h.assigned_emp_code ?? "",
         name: h.assigned_emp_name ?? "",
+        // Where the device was when this entry was written — saved on the row, not the device's plant now.
+        plant: h.plant ?? "",
+        location: h.location ?? "",
         start: h.start_date ?? "",
         end: h.end_date ?? "",
         actionStatus: h.action_status ?? "",
@@ -1167,7 +1174,7 @@ export default function AddDevice({
   const assigning = hasActionHistory && (filled(assign) || releasing);
 
   /*
-   * EVERY FIELD IS MANDATORY EXCEPT CLASSIFICATION — but only the ones on screen. A printer
+   * EVERY FIELD IS MANDATORY EXCEPT CLASSIFICATION AND DESCRIPTION — but only the ones on screen. A printer
    * has no processor or OS to give, so a field hidden for the chosen device type is skipped.
    * Listed in form order, so the message names the first empty box the user will come to.
    */
@@ -1175,6 +1182,7 @@ export default function AddDevice({
   const softwareShown = sectionShows(
     "os", "os_service_pack", "ms_office", "software_1", "software_2", "charger"
   );
+  const optional = (field) => isOptionalFor(deviceName, field);
   const requiredFields = [
     ["asset_code", "Asset Code", shows("asset_code")],
     ["asset_sn", "Asset S/N", shows("asset_sn")],
@@ -1200,7 +1208,7 @@ export default function AddDevice({
     ["warranty_start_date", "Warranty Start Date", true],
     ["last_date_of_warranty", "Warranty End Date", true],
     ["total_warranty_years", "Total Warranty (In Years)", true],
-    ["description", "Description", shows("description")],
+    // Description is OPTIONAL for every device type.
   ];
 
   /*
@@ -1217,7 +1225,8 @@ export default function AddDevice({
     // Fields depend on the device type, so they are only checked once one is chosen.
     if (form.device_id) {
       requiredFields.forEach(([key, label, visible]) => {
-        if (visible && String(form[key] ?? "").trim() === "") errs[key] = `${label} is required.`;
+        // Shown but optional for this type (a tablet's Asset Code / Asset S/N) — see _deviceFields.
+        if (visible && !optional(key) && String(form[key] ?? "").trim() === "") errs[key] = `${label} is required.`;
       });
       if (
         !errs.last_date_of_warranty &&
@@ -1314,6 +1323,7 @@ export default function AddDevice({
     }
 
     const id = targetId ?? res?.response?.id ?? null;
+    savedRefNo.current = res?.response?.reference_no || editing?.reference_no || nextReference || "";
     // The history is written against this id, so a save that returns none must not pass quietly.
     if (!id) {
       await warnAlert(
@@ -1472,8 +1482,10 @@ export default function AddDevice({
             : assigning
               ? `, assigned to ${assign.assigned_emp_name}`
               : "";
+      // The Reference No the backend gave it, under the title.
       await savedToast(
-        `${updating ? "Device updated" : "Device added"} successfully${historyNote}`
+        `${updating ? "Device updated" : "Device added"} successfully${historyNote}`,
+        { "Reference No": savedRefNo.current }
       );
 
       const savedDeviceId = Number(form.device_id);
@@ -1512,7 +1524,7 @@ export default function AddDevice({
       {/* The variable is set once here and inherited by every field inside, native or not. */}
       <form
         onSubmit={onSubmit}
-        className="bg-white rounded-b-[3px] shadow-sm p-6"
+        className="bg-white rounded-b-[3px] shadow-sm p-4 sm:p-6"
         style={{ "--ams-disabled-bg": readOnly ? VIEW_BG : NOT_READY_BG }}
       >
         {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
@@ -1552,7 +1564,9 @@ export default function AddDevice({
             {(readOnly || editing?.id) && (
               <p className="mt-1 text-[11px] text-gray-500">
                 {readOnly
-                  ? "Read only — press EDIT below to change this device."
+                  ? onStartEdit
+                    ? "Read only — press EDIT below to change this device."
+                    : "Read only."
                   : "Fixed while editing — it decides the record."}
               </p>
             )}
@@ -1649,7 +1663,7 @@ export default function AddDevice({
           {shows("asset_code") && (
             <TextField
               label="Asset Code"
-              required
+              required={!optional("asset_code")}
               error={errors.asset_code}
               value={form.asset_code}
               onChange={set("asset_code")}
@@ -1662,7 +1676,7 @@ export default function AddDevice({
           {shows("asset_sn") && (
             <TextField
               label="Asset S/N"
-              required
+              required={!optional("asset_sn")}
               error={errors.asset_sn}
               value={form.asset_sn}
               onChange={set("asset_sn")}
@@ -1701,7 +1715,7 @@ export default function AddDevice({
           {shows("po_no") && (
             <TextField
               label="PO No."
-              required
+              required={!optional("po_no")}
               error={errors.po_no}
               value={form.po_no}
               onChange={set("po_no")}
@@ -2024,7 +2038,7 @@ export default function AddDevice({
           {shows("ip_address") && (
             <MasterSelect
               label="IP Address"
-              required
+              required={!optional("ip_address")}
               error={errors.ip_address}
               options={ipSelectOptions}
               value={form.ip_address}
@@ -2128,7 +2142,6 @@ export default function AddDevice({
           {shows("description") && (
             <TextField
               label="Description"
-              required
               error={errors.description}
               value={form.description}
               onChange={set("description")}
@@ -2152,6 +2165,8 @@ export default function AddDevice({
               onChange={set("device_status")}
               disabled={disabled}
               className={SELECT_CLS}
+              // The last field for a printer (no Action History) — opens above if needed.
+              menuPlacement="auto"
             >
               <option value="">Select Status</option>
               {deviceStatusOptions.map((s) => (
@@ -2242,8 +2257,6 @@ export default function AddDevice({
                   <p className="text-[12px] font-bold uppercase tracking-wide text-gray-700">
                     {currentHolder ? "Assign To New Employee" : "Assign To Employee"}
                   </p>
-                  <span className="text-[11px] text-gray-500">Status will be</span>
-                  <ActionStatusBadge status="Assigned" />
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -2256,9 +2269,10 @@ export default function AddDevice({
                     master="the employee master"
                     required={assigning}
                     error={errors["assign.assigned_emp_code"]}
-                    /* Near the bottom of the form: a short list that scrolls inside itself,
-                       so it stays inside the card, the same as Status. */
+                    /* The LAST field of the form: a short list that scrolls inside itself, and
+                       opens ABOVE when there is no room below (no empty space kept for it). */
                     maxMenuHeight={120}
+                    menuPlacement="auto"
                   />
                   <div>
                     <label className={LABEL_CLS}>
@@ -2303,6 +2317,8 @@ export default function AddDevice({
                           <th className="whitespace-nowrap px-3 py-2 font-semibold">Sr No</th>
                           {/* Stored as two columns, shown as one: "code - name". */}
                           <th className="px-3 py-2 font-semibold">Employee Name &amp; Code</th>
+                          <th className="whitespace-nowrap px-3 py-2 font-semibold">Plant</th>
+                          <th className="px-3 py-2 font-semibold">Location</th>
                           <th className="whitespace-nowrap px-3 py-2 font-semibold">Start Date</th>
                           <th className="whitespace-nowrap px-3 py-2 font-semibold">End Date</th>
                           <th className="whitespace-nowrap px-3 py-2 font-semibold">Recorded</th>
@@ -2316,6 +2332,8 @@ export default function AddDevice({
                             <td className="px-3 py-2 text-gray-700">
                               {[r.code, r.name].filter(Boolean).join(" - ") || "—"}
                             </td>
+                            <td className="whitespace-nowrap px-3 py-2 text-gray-600">{r.plant || "—"}</td>
+                            <td className="px-3 py-2 text-gray-600">{r.location || "—"}</td>
                             <td className="whitespace-nowrap px-3 py-2 text-gray-600">
                               {fmtDate(r.start) || "—"}
                             </td>
@@ -2392,8 +2410,11 @@ export default function AddDevice({
 
         {/* No save button at all when reading — not a disabled one. A greyed-out UPDATE
             invites a click and then explains itself; absent, there is nothing to explain. */}
-        {/* Well below the last field, leaving room below Status for its list to open. */}
-        <div className="mt-24 flex justify-center gap-2 pb-4">
+        {/*
+          * Right below the last field, and the card ends just under them — no empty space
+          * either side. The last lists (Assign To Employee, Status) open above when needed.
+          */}
+        <div className="mt-6 flex flex-wrap justify-center gap-2 pb-4">
           {readOnly ? (
             <>
               {/* EDIT opens this same device to change; UPDATE then saves it. */}

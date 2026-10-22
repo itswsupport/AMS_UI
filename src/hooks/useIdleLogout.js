@@ -25,9 +25,10 @@ const EXPIRY_EVENTS = ["click"];
  * SIGNS THE USER OUT AFTER 30 MINUTES WITHOUT ACTIVITY (the Compliance Management app's rule),
  * with a "Session Timed Out" message, then the login page.
  *
- * Mounted once by ProtectedLayout, for signed-in pages only. The idle gap is measured on the next
- * click; opening or refreshing a page counts as one, so an old session cannot be resumed. A
- * session ended in another tab ends this one too ("Session Ended").
+ * Mounted once by ProtectedLayout, for signed-in pages only. Any activity restarts the 30
+ * minutes from zero; 30 minutes with none ends the session by itself (checked every few
+ * seconds), and a click or opening a page after that ends it at once — an old session cannot be
+ * resumed. A session ended in another tab ends this one too ("Session Ended").
  */
 export function useIdleLogout() {
   const { user, logout } = useAuth();
@@ -51,7 +52,7 @@ export function useIdleLogout() {
     };
 
     const detach = () => {
-      ACTIVITY_EVENTS.forEach((evt) => window.removeEventListener(evt, onActivity));
+      ACTIVITY_EVENTS.forEach((evt) => window.removeEventListener(evt, onActivity, true));
       EXPIRY_EVENTS.forEach((evt) => window.removeEventListener(evt, onClick, true));
     };
 
@@ -86,9 +87,15 @@ export function useIdleLogout() {
       });
     };
 
-    // Polled: only catches the session disappearing from storage (another tab ended it).
+    /*
+     * Polled every few seconds: the session is OUT the moment 30 minutes pass with no activity —
+     * on its own, without waiting for a click — and also when another tab has ended it. Any
+     * activity before then (mouse, keys, scroll, a click — at minute 29 too) starts the 30
+     * minutes again from zero.
+     */
     const checkStorage = () => {
-      if (!hasStoredSession()) expire(false);
+      if (!hasStoredSession()) return expire(false);
+      if (isIdleExpired()) expire();
     };
 
     // When the user is clearly present: storage is the truth, not React state.
@@ -102,7 +109,12 @@ export function useIdleLogout() {
     if (expiredRef.current) return undefined;
     markActivity(true);
 
-    ACTIVITY_EVENTS.forEach((evt) => window.addEventListener(evt, onActivity, { passive: true }));
+    /*
+     * CAPTURE phase, so activity ANYWHERE counts: scrolling inside the page area or a table (a
+     * scroll does not bubble up to the window), and a dropdown that stops its own mouse events.
+     * Without it, a long scroll through a list read as being idle.
+     */
+    ACTIVITY_EVENTS.forEach((evt) => window.addEventListener(evt, onActivity, { passive: true, capture: true }));
     // Capture phase, so a component that stops the click cannot hide it.
     EXPIRY_EVENTS.forEach((evt) => window.addEventListener(evt, onClick, true));
 

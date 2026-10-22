@@ -38,7 +38,8 @@ export default function LoginPage() {
 
   return (
     <div className="flex items-center justify-center h-full w-full bg-[#f4f6f9]">
-      <form onSubmit={onSubmit} className="bg-white p-8 rounded shadow-md w-[360px]">
+      {/* 360px on a computer; on a phone the screen's width less a small margin. */}
+      <form onSubmit={onSubmit} className="bg-white p-6 sm:p-8 rounded shadow-md w-full max-w-[360px] mx-4">
 
       <h1 className="text-[18px] font-bold text-[#3482AE] mb-6 text-center">
         REPL </h1>

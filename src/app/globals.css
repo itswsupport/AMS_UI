@@ -365,6 +365,22 @@ label {
 }
 
 /* ---------------------------------------------------------------------------
+   Phones: no zoom when a field is tapped.
+
+   iOS Safari zooms the whole page in whenever an input under 16px gets focus,
+   and does not zoom back out — every form here is 12–14px, so tapping a field
+   on an iPhone left the page enlarged and sliding sideways. 16px on touch
+   phones only; desktop and tablets keep the 12px look.
+   --------------------------------------------------------------------------- */
+@media (max-width: 767px) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
    Text inputs with a datalist: no browser dropdown arrow.
 
    An <input list="..."> gets a small arrow drawn on its right edge by Chrome

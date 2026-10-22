@@ -77,7 +77,7 @@ export default function Modal({ open, title, barColor, onClose, children }) {
       onClick={onClose}
       role="presentation"
     >
-      <div className="flex min-h-full items-start justify-center px-4 py-8 sm:px-8">
+      <div className="flex min-h-full items-start justify-center px-3 py-6 sm:px-8 sm:py-8">
         {/*
           stopPropagation so a click inside never reaches the backdrop handler above.
           max-w-5xl rather than full width: these forms are three columns, and stretched
@@ -93,14 +93,14 @@ export default function Modal({ open, title, barColor, onClose, children }) {
             className="flex items-center justify-between gap-2 rounded-t-[3px] px-3 py-2"
             style={{ backgroundColor: barColor }}
           >
-            <h3 className="font-semibold uppercase text-white" style={{ fontSize: "12px" }}>
+            <h3 className="min-w-0 break-words font-semibold uppercase text-white" style={{ fontSize: "12px" }}>
               {title}
             </h3>
             <button
               type="button"
               onClick={onClose}
               aria-label="Close"
-              className="rounded-[3px] p-1 text-white hover:bg-white/20"
+              className="shrink-0 rounded-[3px] p-1 text-white hover:bg-white/20"
             >
               <X className="h-4 w-4" />
             </button>

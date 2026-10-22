@@ -177,7 +177,7 @@ export default function LaptopDesktop() {
   };
 
   return (
-    <div className="p-6">
+    <div className="p-3 sm:p-6">
       {/* showBack left on, unlike the Setting page: this one is navigated INTO, so there has
           to be a way back that is not the sidebar. */}
       {/* ADD DEVICE, matching the card on the dashboard that leads here. "Laptop / Desktop"
@@ -190,7 +190,7 @@ export default function LaptopDesktop() {
         * every device type (OPEN + ASSIGNED = TOTAL). All the same height. There is no separate
         * LIST DEVICE: devices are reached through these three lists.
         */}
-      <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${viewer ? "md:grid-cols-3" : "md:grid-cols-4"}`}>
+      <div className={`grid grid-cols-2 gap-3 sm:gap-4 ${viewer ? "md:grid-cols-3" : "md:grid-cols-4"}`}>
         {/* A VIEWER adds nothing, so no ADD DEVICE card for them. */}
         {!viewer && (
           <DashboardCard

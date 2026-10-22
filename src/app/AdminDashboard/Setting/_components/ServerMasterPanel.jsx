@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import DataTable from "@/components/ui/common/DataTable";
 import Modal from "@/components/ui/common/Modal";
-import { confirmDelete, deletedToast, confirmMasterUpdate } from "@/lib/confirmDelete";
+import { confirmDelete, deletedToast, confirmMasterUpdate, savedToast } from "@/lib/confirmDelete";
+import { guardDuplicate } from "@/lib/masterDuplicate";
 import { getServerList, saveServer, updateServer, deleteServer } from "@/services/serverService";
 
 import SearchableSelect from "@/components/ui/common/SearchableSelect";
@@ -116,6 +117,21 @@ export default function ServerMasterPanel({ barColor }) {
     setSaving(true);
     setError("");
     try {
+      // Same name already in the list: Active is a duplicate; Inactive is offered for activation.
+      const go = await guardDuplicate({
+        rows,
+        editingId,
+        value,
+        label: nameLabel.toLowerCase(),
+        activate: (r) => updateServer({ id: r.id, name: r.name, description: r.description ?? null, status: 1 }),
+        onDuplicate: closeForm,
+        onActivated: async () => {
+          closeForm();
+          await loadRows();
+        },
+      });
+      if (!go) return;
+
       const body = { name: value, description: description.trim() || null, status };
       // UPDATE asks first, listing each changed field FROM → TO; Cancel sends nothing.
       if (editingId) {
@@ -138,6 +154,8 @@ export default function ServerMasterPanel({ barColor }) {
       }
       closeForm();
       await loadRows();
+      // "RAM added successfully" / "RAM updated successfully" — the master title without "Master".
+      savedToast(`${title.replace(/ Master$/, "")} ${editingId ? "updated" : "added"} successfully`);
     } catch {
       setError("Could not reach the server.");
     } finally {
@@ -202,7 +220,7 @@ export default function ServerMasterPanel({ barColor }) {
         barColor={barColor}
         onClose={closeForm}
       >
-        <form onSubmit={onSubmit} className="p-6">
+        <form onSubmit={onSubmit} className="p-4 sm:p-6">
           {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -246,7 +264,7 @@ export default function ServerMasterPanel({ barColor }) {
             </div>
           </div>
 
-          <div className="mt-4 flex justify-center gap-2">
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
             <button type="submit" disabled={saving}
               className="px-5 py-2 bg-[#3482AE] text-white text-sm font-semibold rounded-sm hover:bg-[#2a6d8f] disabled:opacity-50">
               {saving ? "SAVING..." : editingId ? "UPDATE" : "SAVE"}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import DataTable from "@/components/ui/common/DataTable";
+import ScrollTabs from "@/components/ui/common/ScrollTabs";
 import { getDeviceList } from "@/services/deviceService";
 import { getDeviceStatus, getAssetList } from "@/services/assetService";
 import { EXPORT_LAYOUTS } from "./_exportLayouts";
@@ -67,31 +68,36 @@ export default function DeviceStatus({ barColor, onRegister, stateFilter = "ALL"
     res?.status_code === 200 && Array.isArray(res.response) ? res.response : null;
 
   /*
-   * One device type's rows, fresh from the server. Each registered row also carries its FULL
-   * device record (from /asset/list), so the exports can write the register layouts — PO No.,
-   * plant, OS, warranty and the rest. The status fields win where both have a value.
+   * One device type's status rows, fresh from the server — for EVERY tab, so each shows its
+   * count straight away.
    */
   const loadDevice = useCallback(async (id) => {
     try {
-      const [statusRes, assetRes] = await Promise.all([
-        getDeviceStatus(id),
-        getAssetList(id).catch(() => null),
-      ]);
-      const list = unwrap(statusRes);
+      const list = unwrap(await getDeviceStatus(id));
       if (!list) {
         setError("Could not load the device status.");
         return;
       }
-      const full = new Map((unwrap(assetRes) ?? []).map((a) => [a.id, a]));
-      const merged = list.map((r) =>
-        r.registered && full.has(r.id) ? { ...full.get(r.id), ...r } : r
-      );
       setError("");
-      setRowsByDevice((all) => ({ ...all, [String(id)]: merged }));
+      setRowsByDevice((all) => ({ ...all, [String(id)]: list }));
     } catch {
       setError("Could not reach the server.");
     }
   }, []);
+
+  /*
+   * THE FULL DEVICE RECORDS (/asset/list) — PO No., OS, warranty and the rest, for the export
+   * layouts — fetched only for the tab being looked at, not for every type up front. Once
+   * fetched, a tab keeps them until this list is opened again.
+   */
+  const [fullByDevice, setFullByDevice] = useState({});
+  useEffect(() => {
+    if (!deviceId || fullByDevice[deviceId] !== undefined) return;
+    setFullByDevice((all) => ({ ...all, [deviceId]: null })); // asked for — not twice
+    getAssetList(deviceId)
+      .then((res) => setFullByDevice((all) => ({ ...all, [deviceId]: unwrap(res) ?? [] })))
+      .catch(() => setFullByDevice((all) => ({ ...all, [deviceId]: [] })));
+  }, [deviceId, fullByDevice]);
 
   useEffect(() => {
     getDeviceList()
@@ -124,7 +130,17 @@ export default function DeviceStatus({ barColor, onRegister, stateFilter = "ALL"
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadDevice, scopeKey]);
 
-  const rows = useMemo(() => rowsByDevice[deviceId] ?? [], [rowsByDevice, deviceId]);
+  /*
+   * The tab's rows: each registered row with its full record added under it (the status fields
+   * win where both have a value). Until the full records arrive the rows show as they are.
+   */
+  const rows = useMemo(() => {
+    const list = rowsByDevice[deviceId] ?? [];
+    const full = new Map((fullByDevice[deviceId] ?? []).map((a) => [a.id, a]));
+    return full.size
+      ? list.map((r) => (r.registered && full.has(r.id) ? { ...full.get(r.id), ...r } : r))
+      : list;
+  }, [rowsByDevice, fullByDevice, deviceId]);
   const loading = Boolean(deviceId) && rowsByDevice[deviceId] === undefined;
 
   /**
@@ -227,15 +243,18 @@ export default function DeviceStatus({ barColor, onRegister, stateFilter = "ALL"
 
   return (
     <div>
-      {/* Heading, then one tab per active device in Device Master. */}
+      {/*
+        * Heading, then one tab per active device in Device Master — on ONE line, sliding with
+        * ‹ › when they do not all fit (ScrollTabs). On a phone the tabs go under the heading.
+        */}
       <div
-        className="flex flex-wrap items-center gap-5 rounded-t-[3px] px-3 py-2"
+        className="flex flex-col gap-2 rounded-t-[3px] px-3 py-2 sm:flex-row sm:items-center sm:gap-5"
         style={{ backgroundColor: barColor }}
       >
-        <h3 className="font-semibold uppercase text-white" style={{ fontSize: "12px" }}>
+        <h3 className="shrink-0 font-semibold uppercase text-white" style={{ fontSize: "12px" }}>
           {title}
         </h3>
-        <div role="tablist" className="flex flex-wrap gap-[10px]">
+        <ScrollTabs activeKey={deviceId}>
           {devices.map((d) => {
             const active = String(d.id) === deviceId;
             // This list's count for the type — open ones on OPEN DEVICES, and so on.
@@ -244,11 +263,12 @@ export default function DeviceStatus({ barColor, onRegister, stateFilter = "ALL"
             return (
               <button
                 key={d.id}
+                data-tab-key={String(d.id)}
                 type="button"
                 role="tab"
                 aria-selected={active}
                 onClick={() => setDeviceId(String(d.id))}
-                className={`flex items-center gap-2 rounded-[3px] px-3 py-1 text-[12px] font-semibold uppercase tracking-wide transition-colors ${
+                className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-[3px] px-3 py-1 text-[12px] font-semibold uppercase tracking-wide transition-colors ${
                   active
                     ? "bg-white text-[#3482AE] shadow-sm"
                     : "border border-white/60 text-white hover:bg-white/15"
@@ -265,7 +285,7 @@ export default function DeviceStatus({ barColor, onRegister, stateFilter = "ALL"
               </button>
             );
           })}
-        </div>
+        </ScrollTabs>
       </div>
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}

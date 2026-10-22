@@ -25,7 +25,7 @@ export default function BulkUploadPage() {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-3 sm:p-6">
       {/* BACK, on the right — always to the main User Dashboard. */}
       <div className="mb-3 flex justify-end">
         <button
@@ -42,7 +42,7 @@ export default function BulkUploadPage() {
         * Tab cards — the SAME cards as the User Dashboard (DashboardCard, same icons at the same
         * size, same height), all three the same blue.
         */}
-      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="mb-6 grid grid-cols-3 gap-3 sm:gap-4">
         {TABS.map(({ key, label, Icon }) => (
           <DashboardCard
             key={key}

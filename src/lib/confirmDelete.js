@@ -60,6 +60,38 @@ export function warnAlert(title, text) {
 }
 
 /**
+ * A name typed again that is already in the master and ACTIVE. One button, Cancel: the
+ * caller then closes the form and goes back to the list.
+ */
+export function duplicateAlert(title, text) {
+  return Swal.fire({
+    title,
+    text,
+    icon: "warning",
+    confirmButtonText: "Cancel",
+    confirmButtonColor: "#6b7280",
+  });
+}
+
+/**
+ * A name typed again that is already in the master but INACTIVE: offers to activate that
+ * row instead of adding a second one. true only when the user pressed Activate.
+ */
+export async function confirmActivate(name, what = "record") {
+  const result = await Swal.fire({
+    title: `"${name}" is already added`,
+    text: `This ${what} is already added but it is Inactive. You can simply activate it.`,
+    icon: "info",
+    showCancelButton: true,
+    confirmButtonText: "Activate it",
+    cancelButtonText: "Cancel",
+    confirmButtonColor: "#3482AE",
+    cancelButtonColor: "#6b7280",
+  });
+  return result.isConfirmed;
+}
+
+/**
  * Leaving a form with changes not saved: true to discard them and leave, false to stay.
  * Stay is the focused, safe choice.
  */
@@ -158,11 +190,29 @@ export async function confirmMasterUpdate(original, body, { labels, show = {}, w
 }
 
 /** Brief confirmation after a save succeeds. */
-export function savedToast(message = "Saved") {
+/*
+ * "… added successfully" / "… updated successfully" — after EVERY successful save, on the user
+ * screens (Add Device, Server, Software) and the admin masters alike. Stays on screen with an
+ * OK button so it is not missed; closes by itself after 3 seconds (the bar shows the time left).
+ */
+/**
+ * @param message the title ("Device added successfully")
+ * @param details optional lines under it, label → value, e.g. { "Reference No": "DE26QA112118" };
+ *                an empty value is left out
+ */
+export function savedToast(message = "Saved successfully", details = null) {
+  const esc = (s) =>
+    String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const lines = Object.entries(details ?? {}).filter(([, v]) => String(v ?? "").trim() !== "");
   return Swal.fire({
     title: message,
+    html: lines.length
+      ? lines.map(([k, v]) => `<div style="margin:2px 0">${esc(k)}: <b>${esc(v)}</b></div>`).join("")
+      : undefined,
     icon: "success",
-    timer: 1400,
-    showConfirmButton: false,
+    confirmButtonText: "OK",
+    confirmButtonColor: "#3482AE",
+    timer: 3000,
+    timerProgressBar: true,
   });
 }

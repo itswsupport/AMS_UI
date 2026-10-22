@@ -44,6 +44,10 @@ function GridToolbarNoExport() {
     <GridToolbarContainer
       sx={{
         justifyContent: 'flex-end',
+        // On a phone the Excel / PDF / Print buttons and the icons cannot share one line:
+        // they wrap onto two instead of running off the card's right edge.
+        flexWrap: 'wrap',
+        rowGap: 0.5,
         gap: { xs: 0.125, sm: 0.5 },
         p: 0.5,
         '& .MuiButton-root': { fontSize: 0, minWidth: 0, p: '6px', color: '#6b7280' },
@@ -237,6 +241,28 @@ export default function DataTable({
   const [filterModel, setFilterModel] = useState({ items: [] });
   const [densityFactor, setDensityFactor] = useState(1);
   const wrapRef = useRef(null);
+
+  /*
+   * WIDTH BEFORE GRID. MUI's DataGrid logs "the parent DOM element of the Data Grid has an
+   * empty width" when it is drawn into a box 0px wide — a window dragged very narrow, or a
+   * table drawn while its area is hidden. So the grid waits until its box has a width (watched
+   * with a ResizeObserver), and appears the moment it does.
+   */
+  const [hasWidth, setHasWidth] = useState(false);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return undefined;
+    const check = () => setHasWidth(el.getBoundingClientRect().width > 0);
+    check();
+    if (typeof ResizeObserver === 'undefined') {
+      setHasWidth(true);
+      return undefined;
+    }
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+    // FULL SCREEN moves the grid into a new box (a portal): watch that one instead.
+  }, [isFullscreen]);
   const toggleFullscreen = () => setIsFullscreen((f) => !f);
   const toggleFilters = () => setFiltersVisible((v) => !v);
   const getColFilter = (field) => filterModel.items.find((it) => it.field === field)?.value ?? '';
@@ -609,15 +635,19 @@ export default function DataTable({
   }
 
   const exportBtnCls =
-    'px-4 py-1.5 bg-[#3482AE] hover:bg-[#2A6B91] text-white text-[11px] uppercase rounded-sm border-0 cursor-pointer transition-colors flex items-center gap-1.5';
+    'px-3 sm:px-4 py-1.5 bg-[#3482AE] hover:bg-[#2A6B91] text-white text-[11px] uppercase rounded-sm border-0 cursor-pointer transition-colors flex items-center gap-1.5';
 
   const gridBlock = (
         <div
           ref={wrapRef}
-          className={`no-print bg-white border border-gray-200 shadow-sm ${
+          className={`no-print w-full min-w-0 bg-white border border-gray-200 shadow-sm ${
             isFullscreen ? 'fixed inset-0 z-[9998] rounded-none overflow-hidden p-2 flex flex-col' : 'rounded-lg'
           }`}
         >
+          {/* Drawn only once its box has a width (see hasWidth) — never at 0px. */}
+          {!hasWidth ? (
+            <div className="h-[120px]" />
+          ) : (
           <DataGrid
             rows={loading ? [] : filteredRows}
             columns={muiColumns}
@@ -688,11 +718,12 @@ export default function DataTable({
               '& .MuiDataGrid-columnHeader:focus, & .MuiDataGrid-columnHeader:focus-within': { outline: 'none' },
             }}
           />
+          )}
         </div>
   );
 
   const exportButtons = (
-    <div className="flex items-center gap-1 no-print">
+    <div className="flex flex-wrap items-center gap-1 no-print">
       <button type="button" onClick={handleExcelExport} className={exportBtnCls}>
         <i className="fas fa-file-excel" /> Excel
       </button>

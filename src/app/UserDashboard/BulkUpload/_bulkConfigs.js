@@ -1,12 +1,16 @@
 import { bulkUploadDevices, bulkUploadServers, bulkUploadSoftware } from "@/services/bulkUploadService";
 import { deviceFieldRules } from "../LaptopDesktop/_deviceFields";
-import { FIELD_FORMATS, fieldFormatError } from "@/lib/fieldFormats";
+import { FIELD_FORMATS, fieldFormatError, formatKeyOf } from "@/lib/fieldFormats";
+import { softwareErrors, LICENSE_MAX } from "@/lib/softwareRules";
 
-/** "PO No.: numbers only — "#21/129" is not allowed", for every code field of the row that is wrong. */
+/**
+ * "PO No.: numbers only — "#21/129" is not allowed", for every code field of the row that is
+ * wrong. A column's `format` names its rule when it differs from its key (the Server columns).
+ */
 const formatErrors = (row, columns, keep = () => true) =>
   columns
-    .filter((c) => FIELD_FORMATS[c.key] && keep(c.key))
-    .map((c) => fieldFormatError(c.key, c.header, row[c.key]))
+    .filter((c) => FIELD_FORMATS[formatKeyOf(c)] && keep(c.key))
+    .map((c) => fieldFormatError(formatKeyOf(c), c.header, row[c.key]))
     .filter(Boolean);
 
 /*
@@ -87,13 +91,15 @@ const DEVICE_COLUMNS = [
 ];
 
 /*
- * Every field of the ADD SERVER form, in the form's order and with its labels. Only the Server
- * Name is mandatory, as on the form; it has to be a server from Server Master not added yet.
+ * Every field of the ADD SERVER form, in the form's order and with its labels. Mandatory as on
+ * the form: the fields filled on every server of the register's SERVER sheet. The Server Name
+ * has to be a server from Server Master not added yet.
  */
 const SERVER_COLUMNS = [
   // Server Details
   { header: "Server Name", key: "server_name", required: true, preview: true },
-  { header: "Type", key: "server_type", preview: true },
+  // `format`: the server's own typed-text rules (lib/fieldFormats), as on ADD SERVER.
+  { header: "Type", key: "server_type", format: "server_type", required: true, preview: true },
   { header: "S/N", key: "serial_no" },
   // Hardware Details
   { header: "Processor Ghz", key: "processor" },
@@ -101,29 +107,31 @@ const SERVER_COLUMNS = [
   { header: "HDD (GB)", key: "hdd" },
   { header: "System Type", key: "system_type" },
   // Software Details
-  { header: "OS", key: "os_name" },
-  { header: "OS Service Pack", key: "os_service_pack" },
-  { header: "Other Software 1", key: "other_software_1" },
-  { header: "Other Software 2", key: "other_software_2" },
+  { header: "OS", key: "os_name", required: true },
+  { header: "OS Service Pack", key: "os_service_pack", format: "server_os_sp" },
+  { header: "Other Software 1", key: "other_software_1", format: "server_software" },
+  { header: "Other Software 2", key: "other_software_2", format: "server_software" },
   // Server Allocation Details
-  { header: "IP Address", key: "ip_address", preview: true },
-  { header: "Plant", key: "plant", preview: true },
-  { header: "Dept.", key: "department" },
-  { header: "Location", key: "location" },
+  { header: "IP Address", key: "ip_address", required: true, preview: true },
+  { header: "Plant", key: "plant", required: true, preview: true },
+  { header: "Dept.", key: "department", required: true },
+  { header: "Location", key: "location", required: true },
   // Warranty Details
-  { header: "Warranty Status", key: "warranty_status" },
-  { header: "Warranty Start Date", key: "warranty_start_date", type: "date" },
-  { header: "Last Date Of Warranty", key: "last_date_of_warranty", type: "date" },
+  { header: "Warranty Status", key: "warranty_status", required: true },
+  { header: "Warranty Start Date", key: "warranty_start_date", type: "date", required: true },
+  { header: "Last Date Of Warranty", key: "last_date_of_warranty", type: "date", required: true },
   // Worked out by the template from the two dates (as on the form) — never typed.
   { header: "Total Warranty (In Years)", key: "total_warranty_years", type: "number", auto: true },
   // Other Details — no Status (Active / Inactive): every server is saved active.
-  { header: "Description", key: "description" },
+  { header: "Description", key: "description", format: "server_description" },
 ];
 
 const SOFTWARE_COLUMNS = [
   { header: "Product Name", key: "product_name", required: true, preview: true },
-  { header: "Total Licenses Acquired", key: "total_licenses_acquired", type: "integer", preview: true },
-  { header: "License Excess or Deficiency", key: "license_excess_deficiency", type: "integer", preview: true },
+  // Both filled on every product of the register's SOFTWARE sheet — see lib/softwareRules.
+  // At most 2 digits, as on the form: the template's cells take only these whole numbers.
+  { header: "Total Licenses Acquired", key: "total_licenses_acquired", type: "integer", min: 0, max: LICENSE_MAX, required: true, preview: true },
+  { header: "License Excess or Deficiency", key: "license_excess_deficiency", type: "integer", min: -LICENSE_MAX, max: LICENSE_MAX, required: true, preview: true },
   { header: "License Type", key: "license_type", preview: true },
   { header: "Renewal Date", key: "renewal_date", type: "date" },
   { header: "Status", key: "status" },
@@ -142,6 +150,86 @@ const yearsBetween = (start, end) => {
   let months = (after.getFullYear() - sy) * 12 + (after.getMonth() + 1 - sm);
   if (after.getDate() < sd) months -= 1;
   return months > 0 ? Math.round((months / 12) * 100) / 100 : null;
+};
+
+/*
+ * UPDATING A DEVICE FROM THE SHEET — the fields a sheet may change on a device already added:
+ * every column except what identifies it (type, model, name, Reference No), what the sheet
+ * works out itself (Company, Total Warranty, Age) and the assignment (done from Action History).
+ */
+const NOT_UPDATED = new Set([
+  "reference_no", "device_type", "model", "name", "company", "age", "total_warranty_years",
+  "assign_employee", "assign_start_date",
+]);
+/** The fields of a device record the ADD DEVICE form loads and sends back on UPDATE. */
+const RECORD_KEYS = [
+  "device_id", "name", "po_no", "asset_code", "asset_sn", "service_tag", "exp_service_code",
+  "device_status", "department", "location", "plant", "employee_code", "employee_name",
+  "ip_address", "model", "processor", "ram", "rom", "hdd", "external_processor", "external_ram",
+  "external_rom", "external_hdd", "system_type", "os", "os_service_pack", "ms_office",
+  "software_1", "software_2", "charger", "keyboard", "mouse", "warranty_status",
+  "warranty_start_date", "last_date_of_warranty", "total_warranty_years", "classification",
+  "description", "status",
+];
+
+/**
+ * A device already added, as the sheet now has it. Only cells FILLED IN count — an empty cell
+ * never wipes what is saved. Nothing different: skipped as before. Something different: an
+ * UPDATE — the saved device with those fields changed, sent through the same /asset/update as
+ * EDIT on Add Device, so the server writes each change to the device's change log (who, when,
+ * from, to) exactly as an edit does.
+ */
+const updateCheck = (row, record, type, ctx, skip, skipInfo) => {
+  const rules = deviceFieldRules(type.device_name);
+  const asText = (key, v) => {
+    if (v === null || v === undefined) return "";
+    const s = String(v).trim();
+    return DEVICE_COLUMNS.find((c) => c.key === key)?.type === "date" ? s.slice(0, 10) : s;
+  };
+
+  const merged = {};
+  RECORD_KEYS.forEach((k) => {
+    if (record[k] !== null && record[k] !== undefined) merged[k] = record[k];
+  });
+  const changes = [];
+  DEVICE_COLUMNS.forEach((c) => {
+    if (NOT_UPDATED.has(c.key) || !rules.has(c.key)) return;
+    const now = asText(c.key, row[c.key]);
+    if (now === "") return; // empty in the sheet: keep what is saved
+    const before = asText(c.key, record[c.key]);
+    if (now === before) return;
+    changes.push({ key: c.key, label: c.header, type: c.type, from: before, to: now });
+    merged[c.key] = row[c.key];
+  });
+  if (!changes.length) return { errors: [], payload: null, skip, skipInfo };
+
+  const errors = [];
+  if (String(record.device_id) !== String(type.id)) {
+    errors.push(`${row.name} is saved under another device type — change the Device Type back`);
+  }
+  // Numbers only / letters and numbers only — on the cells being changed.
+  const changedOnly = Object.fromEntries(changes.map((c) => [c.key, row[c.key]]));
+  errors.push(...formatErrors(changedOnly, DEVICE_COLUMNS, (key) => rules.has(key)));
+  // A USER may move a device only to one of their own plants.
+  const myPlants = ctx.scope.limited ? ctx.scope.plants ?? [] : [];
+  if (changedOnly.plant && myPlants.length && !myPlants.includes(String(changedOnly.plant).trim())) {
+    errors.push(`You can change devices only for plant ${myPlants.join(", ")}`);
+  }
+  const start = asText("warranty_start_date", merged.warranty_start_date);
+  const end = asText("last_date_of_warranty", merged.last_date_of_warranty);
+  if (start && end && end <= start) errors.push("Warranty End Date must be after the Start Date");
+
+  const payload = {
+    ...merged,
+    id: record.id,
+    device_id: type.id,
+    name: record.name,
+    model: record.model,
+    total_warranty_years: yearsBetween(start, end) ?? record.total_warranty_years ?? null,
+    status: Number(record.status ?? 1),
+    ...ctx.changedBy,
+  };
+  return { errors, payload, skip: null, skipInfo, update: { id: record.id, ref: skipInfo?.ref ?? "", changes } };
 };
 
 /**
@@ -192,6 +280,14 @@ const deviceCheck = (row, ctx) => {
       : `This device is already added${ref} and is Open — assign it from Open Devices, not from the sheet`;
     skipInfo = { ref: existing.ref ?? "", holder };
   }
+
+  /*
+   * ALREADY ADDED, BUT CHANGED IN THE SHEET → an UPDATE (any device type). The saved device
+   * (ctx.records, from /asset/list) is compared with the sheet; unchanged it is skipped as above.
+   */
+  const record = row.name && existing ? ctx.records?.get(String(row.name).trim().toLowerCase()) : null;
+  if (record && type) return updateCheck(row, record, type, ctx, skip, skipInfo);
+
   // A USER's plant(s): one is filled in when the cell is empty; with several, one must be picked.
   let plant = row.plant;
   const myPlants = ctx.scope.limited ? ctx.scope.plants ?? [] : [];
@@ -291,7 +387,8 @@ const serverCheck = (row, ctx) => {
   return {
     errors,
     skip,
-    payload: { ...row, total_warranty_years: totalYears, status: 1 },
+    // ctx.changedBy: who is uploading — the backend stores it as the server's reg_by.
+    payload: { ...row, total_warranty_years: totalYears, status: 1, ...ctx.changedBy },
   };
 };
 
@@ -313,9 +410,13 @@ const softwareCheck = (row, ctx) => {
   if (license && ctx.licenseTypes && !ctx.licenseTypes.has(license.toLowerCase())) {
     errors.push(`License Type "${license}" is not in License Master`);
   }
-  if (row.total_licenses_acquired != null && row.total_licenses_acquired < 0) {
-    errors.push("Total Licenses Acquired cannot be negative");
-  }
+  // The register's rules, the same as ADD SOFTWARE (lib/softwareRules).
+  // A cell left empty (or unreadable) is already reported by the sheet reader — not twice.
+  errors.push(
+    ...Object.entries(softwareErrors(row))
+      .filter(([k]) => !(k !== "renewal_date" && (row[k] === null || row[k] === undefined)))
+      .map(([, m]) => m.replace(/\.$/, ""))
+  );
   const statusText = String(row.status ?? "").trim().toLowerCase();
   if (statusText && statusText !== "active" && statusText !== "inactive") {
     errors.push(`Status must be Active or Inactive, not "${row.status}"`);

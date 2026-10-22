@@ -9,7 +9,7 @@ import { getUserScope } from "@/lib/userScope";
 import { isViewer } from "@/lib/permissions";
 import { getDeviceList } from "@/services/deviceService";
 import { getModelList } from "@/services/modelService";
-import { getDeviceStatus, getAssetList } from "@/services/assetService";
+import { getDeviceStatus, getAssetList, updateAsset } from "@/services/assetService";
 /*
  * The three record forms are large and needed only when a Reference No / name in the table is
  * clicked — so they are loaded THEN, not with the page. The page opens without them.
@@ -24,6 +24,7 @@ import { getHddList } from "@/services/hddService";
 import { getOsList } from "@/services/osService";
 import { getSystemTypeList } from "@/services/systemTypeService";
 import { getWarrantyList } from "@/services/warrantyService";
+import { yearMonthBetween } from "@/lib/warranty";
 import { getIpAddressList } from "@/services/ipAddressService";
 import {
   getCompanyList,
@@ -81,6 +82,8 @@ const showError = (title, err) =>
 export default function BulkUploadPanel({ type }) {
   const config = BULK_TYPES[type];
   const { user } = useAuth();
+  // A VIEWER sees every row uploaded so far, but downloads, selects and uploads nothing.
+  const viewer = isViewer(user);
   const scope = getUserScope(user);
   const fileInput = useRef(null);
 
@@ -136,13 +139,134 @@ export default function BulkUploadPanel({ type }) {
   const [uploadedLoading, setUploadedLoading] = useState(true);
   // Why the uploaded list could not be loaded — shown above the table, with RETRY.
   const [uploadedError, setUploadedError] = useState("");
+  /*
+   * TODAY'S VALUES, NOT THE UPLOAD-DAY SNAPSHOT. The record of an uploaded sheet keeps each row
+   * as it was uploaded; a field edited since (Renewal Date 31/12/2026 → 14/01/2027, say) would
+   * still show the old value. So each uploaded row is matched to its CURRENT record and shown
+   * with that record's values:
+   *   device    by Reference No (else Device Name), from /asset/list of every device type
+   *   server    by Server Name, from /serverasset/list
+   *   software  the entry still identical to the row, else the only entry of that product not
+   *             already matched (a product added more than once and edited is left as uploaded)
+   * A row whose record is gone (deleted) is shown as uploaded. The sheet's own columns only —
+   * file name, uploaded on and by stay as recorded.
+   */
+  const withCurrentValues = async (snapshot) => {
+    const ok = (res) => (res?.status_code === 200 && Array.isArray(res.response) ? res.response : []);
+    const key = (v) => String(v ?? "").trim().toLowerCase();
+    const shownAs = (c, v) => {
+      if (v === null || v === undefined) return "";
+      if (c.type === "date") return showDate(String(v).slice(0, 10));
+      if (type === "software" && c.key === "status") return Number(v) === 0 ? "Inactive" : "Active";
+      return v;
+    };
+    /*
+     * EVERY COLUMN the record holds under the same name is refreshed — so a column added to the
+     * sheet later (a new dropdown, say) refreshes too, with nothing more to do. The device
+     * columns the record holds under OTHER names are worked out below.
+     */
+    const SPECIAL = new Set(["device_type", "company", "assign_employee", "assign_start_date", "age"]);
+    const companyOf = new Map(); // plant code -> company, for a device's Company column
+    const overlay = (row, rec) => {
+      if (!rec) return row;
+      const out = { ...row };
+      config.columns.forEach((c) => {
+        if (SPECIAL.has(c.key) || !(c.key in rec)) return;
+        out[c.key] = shownAs(c, rec[c.key]);
+      });
+      if (type === "device") {
+        // Device Type, Company (from the plant now), Assign To Employee (who holds it now), Age.
+        if (rec.device_name) out.device_type = rec.device_name;
+        const plant = String(rec.plant ?? "").trim();
+        if (plant) out.company = companyOf.get(plant) ?? out.company;
+        out.assign_employee = rec.employee_code
+          ? [rec.employee_code, rec.employee_name].filter(Boolean).join(" - ")
+          : "";
+        if (rec.assign_start_date) out.assign_start_date = showDate(String(rec.assign_start_date).slice(0, 10));
+        out.age = yearMonthBetween(String(rec.warranty_start_date ?? "").slice(0, 10)) || out.age;
+      }
+      return out;
+    };
+
+    if (type === "device") {
+      const [types, companies] = await Promise.all([
+        getDeviceList().then(ok).catch(() => []),
+        getCompanyList().then(ok).catch(() => []),
+      ]);
+      companies.forEach((c) => {
+        const code = String(c.plant_code ?? "").trim();
+        if (code && !companyOf.has(code)) companyOf.set(code, c.company_name || c.company_short_name || "");
+      });
+      const all = (await Promise.all(types.map((t) => getAssetList(t.id).then(ok).catch(() => [])))).flat();
+      const byRef = new Map(all.filter((a) => a.reference_no).map((a) => [key(a.reference_no), a]));
+      const byName = new Map(all.filter((a) => a.name).map((a) => [key(a.name), a]));
+      return snapshot.map((r) => overlay(r, byRef.get(key(r.reference_no)) ?? byName.get(key(r.name))));
+    }
+    if (type === "server") {
+      const byName = new Map(ok(await getServerAssetList().catch(() => null)).map((s) => [key(s.server_name), s]));
+      return snapshot.map((r) => overlay(r, byName.get(key(r.server_name))));
+    }
+    // Software: the same product may be on the register more than once.
+    const entries = ok(await getSoftwareList().catch(() => null));
+    const used = new Set();
+    const iso = (d) => {
+      const m = String(d ?? "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      return m ? `${m[3]}-${m[2]}-${m[1]}` : String(d ?? "");
+    };
+    const exact = (r) =>
+      entries.find(
+        (s) =>
+          !used.has(s.id) &&
+          softwareKey(s) ===
+            softwareKey({ ...r, renewal_date: iso(r.renewal_date), status: key(r.status) === "inactive" ? 0 : 1 })
+      );
+    /*
+     * EDITED SINCE: of the entries of the same product not matched yet, the one that agrees with
+     * the row on the MOST of its other values — licences, excess, licence type, renewal date,
+     * status. Windows XP with 2 / 2 / StandAlone REPL 7 / Active whose renewal date was changed
+     * still agrees on four of five, while another Windows XP entry agrees on far fewer. Taken
+     * only when it is the clear best (no tie) and agrees on at least half.
+     */
+    const FIELDS = [
+      (s, r) => String(s.total_licenses_acquired ?? "") === String(r.total_licenses_acquired ?? ""),
+      (s, r) => String(s.license_excess_deficiency ?? "") === String(r.license_excess_deficiency ?? ""),
+      (s, r) => key(s.license_type) === key(r.license_type),
+      (s, r) => String(s.renewal_date ?? "").slice(0, 10) === iso(r.renewal_date),
+      (s, r) => (Number(s.status) === 0 ? "inactive" : "active") === (key(r.status) || "active"),
+    ];
+    const closest = (r) => {
+      const scored = entries
+        .filter((s) => !used.has(s.id) && key(s.product_name) === key(r.product_name))
+        .map((s) => ({ s, score: FIELDS.filter((same) => same(s, r)).length }))
+        .sort((a, b) => b.score - a.score);
+      if (!scored.length || scored[0].score < FIELDS.length / 2) return null;
+      if (scored.length > 1 && scored[1].score === scored[0].score) return null; // a tie: unsure
+      return scored[0].s;
+    };
+    // Unchanged rows first, so an edited row is matched only among the entries left over.
+    const matched = snapshot.map((r) => {
+      const rec = exact(r);
+      if (rec) used.add(rec.id);
+      return rec ?? null;
+    });
+    return snapshot.map((r, i) => {
+      let rec = matched[i];
+      if (!rec) {
+        rec = closest(r);
+        if (rec) used.add(rec.id);
+      }
+      return overlay(r, rec);
+    });
+  };
+
   const loadUploaded = async () => {
     setUploadedLoading(true);
     setUploadedError("");
     try {
       const res = await getUploadedRows(type);
       if (res?.status_code === 200 && Array.isArray(res.response)) {
-        setUploaded(res.response);
+        // Shown with today's values; if those cannot be fetched, as uploaded.
+        setUploaded(await withCurrentValues(res.response).catch(() => res.response));
       } else {
         setUploadedError(res?.message || "The devices uploaded earlier could not be loaded.");
       }
@@ -299,13 +423,17 @@ export default function BulkUploadPanel({ type }) {
     [uploaded, nameField, config.allowDuplicates]
   );
 
-  // Sent on IMPORT: no errors, not already in the system (skipped), not already uploaded.
+  // Sent on IMPORT as NEW: no errors, not already in the system (skipped), not already uploaded.
   const ready = rows.filter(
     (r) =>
       r.errors.length === 0 &&
       !r.skip &&
+      !r.update &&
+      !r.result &&
       !uploadedNames.has(String(r.values[nameField] ?? "").trim().toLowerCase())
   );
+  // Sent on IMPORT as UPDATES: devices already added whose sheet values changed, with no errors.
+  const updates = rows.filter((r) => r.update && r.errors.length === 0 && !r.result);
   const summary = useMemo(() => {
     const done = rows.filter((r) => r.result);
     const invalid = rows.filter((r) => r.errors.length).length;
@@ -633,9 +761,17 @@ export default function BulkUploadPanel({ type }) {
        * rather than refused after IMPORT. Device names are unique across every type.
        */
       const registered = new Map();
+      // The saved devices themselves (name -> full record), to see whether a sheet row CHANGES one.
+      const records = new Map();
       if (type === "device") {
         const ok = (res) => (res?.status_code === 200 && Array.isArray(res.response) ? res.response : []);
-        const lists = await Promise.all(devices.map((d) => getDeviceStatus(d.id).then(ok).catch(() => [])));
+        const [lists, full] = await Promise.all([
+          Promise.all(devices.map((d) => getDeviceStatus(d.id).then(ok).catch(() => []))),
+          Promise.all(devices.map((d) => getAssetList(d.id).then(ok).catch(() => []))),
+        ]);
+        full.flat().forEach((a) => {
+          if (a?.name) records.set(String(a.name).trim().toLowerCase(), a);
+        });
         lists.flat().forEach((r) => {
           // Its Reference No and, when it is assigned, who has it — said in the row's message.
           if (r.registered && r.name) {
@@ -681,6 +817,7 @@ export default function BulkUploadPanel({ type }) {
       }
 
       const ctx = {
+        records,
         serverNames,
         registeredServers,
         productNames,
@@ -763,19 +900,93 @@ export default function BulkUploadPanel({ type }) {
     }
   };
 
-  /** Send the ready rows; put each result back on its row. */
+  /** Send the new rows and the updates; put each result back on its row. */
   const onImport = async () => {
-    if (!ready.length) return;
+    // Nothing at all to do: only a sheet whose rows are all already added goes on, to say so.
+    if (!ready.length && !updates.length && !summary.skipped) return;
+    /*
+     * SHORT AND PLAIN, BY NAME — one line per kind of row, the same for every device type,
+     * server and software:
+     *   "HR601, EDC504 are already added — they will not be uploaded."
+     *   "This device will be updated: HR602 — Processor: i3 → i5"
+     *   "Only HR307 will be uploaded."
+     */
+    const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
+    const nameOf = (r) => r.values[nameField] || `Excel row ${r.rowNo}`;
+    // "HR601, EDC504" — the first 5 names, then "and 3 more".
+    const list = (rs) =>
+      rs.slice(0, 5).map((r) => `<b>${esc(nameOf(r))}</b>`).join(", ") +
+      (rs.length > 5 ? ` and ${rs.length - 5} more` : "");
+    const isAre = (rs) => (rs.length === 1 ? "is" : "are");
+    const line = (text, color = "#374151") => `<p style="margin:6px 0;color:${color}">${text}</p>`;
+    const skippedRows = rows.filter((r) => r.skip && !r.result);
+    const invalidRows = rows.filter((r) => r.errors.length);
+    const noun = config.title.toLowerCase();
+    const alreadyLine = skippedRows.length
+      ? line(`${list(skippedRows)} ${isAre(skippedRows)} already added — ${skippedRows.length === 1 ? "it" : "they"} will not be uploaded.`, "#b45309")
+      : "";
+    const fixLine = invalidRows.length
+      ? line(`${list(invalidRows)} ${isAre(invalidRows)} not correct — fix and upload again.`, "#b91c1c")
+      : "";
+    // "HR602 — Processor: i3 → i5, RAM: 8 GB → 16 GB" (dates as DD/MM/YYYY).
+    const shown = (c, v) => (v === "" ? "empty" : c.type === "date" ? showDate(v) : v);
+    const updateLines = updates.length
+      ? line(`${updates.length === 1 ? "This device" : "These devices"} will be updated:`, "#1d4ed8") +
+        `<ul style="margin:2px 0 6px 18px;list-style:disc;text-align:left;font-size:12px;max-height:160px;overflow-y:auto">` +
+        updates
+          .slice(0, 10)
+          .map(
+            (r) =>
+              `<li><b>${esc(nameOf(r))}</b> — ` +
+              r.update.changes.map((c) => `${esc(c.label)}: ${esc(shown(c, c.from))} → ${esc(shown(c, c.to))}`).join(", ") +
+              `</li>`
+          )
+          .join("") +
+        (updates.length > 10 ? `<li>… and ${updates.length - 10} more</li>` : "") +
+        `</ul>`
+      : "";
+
+    /* NOTHING NEW AND NOTHING CHANGED — every row is already added as it is: CANCEL only. */
+    if (!ready.length && !updates.length && skippedRows.length) {
+      await Swal.fire({
+        icon: "warning",
+        title: "Nothing new to upload",
+        html: alreadyLine + fixLine,
+        showConfirmButton: false,
+        showCancelButton: true,
+        cancelButtonText: "Cancel",
+        cancelButtonColor: "#6b7280",
+      });
+      return;
+    }
+
+    const leftOut = skippedRows.length + invalidRows.length;
+    const plural = (n) => (n === 1 ? "" : "s");
+    const title =
+      ready.length && updates.length
+        ? `Upload ${ready.length} new and update ${updates.length} ${noun}${plural(updates.length)}?`
+        : updates.length
+          ? updates.length === 1
+            ? `Update ${noun} ${esc(nameOf(updates[0]))}?`
+            : `Update ${updates.length} ${noun}s?`
+          : ready.length === 1
+            ? `Upload ${noun} ${esc(nameOf(ready[0]))}?`
+            : `Upload ${ready.length} new ${noun}s?`;
     const confirm = await Swal.fire({
-      icon: "question",
-      title: `Upload ${ready.length} ${config.title.toLowerCase()} row(s)?`,
-      html: [
-        summary.skipped ? `<p>${summary.skipped} row(s) already added will be skipped.</p>` : "",
-        summary.invalid ? `<p>${summary.invalid} row(s) with errors will not be uploaded.</p>` : "",
-      ].join(""),
+      icon: leftOut || updates.length ? "warning" : "question",
+      title,
+      html:
+        alreadyLine +
+        fixLine +
+        updateLines +
+        (ready.length
+          ? line(`${leftOut && !updates.length ? "Only " : ""}${list(ready)} will be uploaded${updates.length ? " as new" : ""}.`, "#15803d")
+          : ""),
       showCancelButton: true,
-      confirmButtonText: "Yes, upload",
+      confirmButtonText: ready.length ? "Yes, upload" : "Yes, update",
+      cancelButtonText: "Cancel",
       confirmButtonColor: "#3482AE",
+      cancelButtonColor: "#6b7280",
     });
     if (!confirm.isConfirmed) return;
 
@@ -784,57 +995,86 @@ export default function BulkUploadPanel({ type }) {
       // A preview kept from before fingerprints existed works its own out from its rows.
       const hash = fileHash || (await sheetFingerprint(rows, config));
       if (!fileHash) setFileHash(hash);
-      const res = await config.upload(ready.map((r) => r.payload), hash);
-      if (res?.status_code !== 200 || !Array.isArray(res.response)) {
-        // Refused as a whole — e.g. this sheet was already uploaded (checked by the server too).
-        Swal.fire({ icon: "error", title: "Upload refused", text: res?.message || "The server did not accept the file.", confirmButtonColor: "#3482AE" });
-        return;
+      let next = rows;
+
+      // NEW ROWS — in one request, as before.
+      if (ready.length) {
+        const res = await config.upload(ready.map((r) => r.payload), hash);
+        if (res?.status_code !== 200 || !Array.isArray(res.response)) {
+          // Refused as a whole — e.g. this sheet was already uploaded (checked by the server too).
+          Swal.fire({ icon: "error", title: "Upload refused", text: res?.message || "The server did not accept the file.", confirmButtonColor: "#3482AE" });
+          return;
+        }
+        const byIndex = new Map(res.response.map((r) => [r.index, r]));
+        let k = 0;
+        // Results go back onto exactly the rows that were sent (the ready ones, in order).
+        const sent = new Set(ready.map((r) => r.rowNo));
+        next = next.map((r) =>
+          !sent.has(r.rowNo) ? r : { ...r, result: byIndex.get(k++) ?? { success: false, message: "No answer from the server" } }
+        );
       }
-      const byIndex = new Map(res.response.map((r) => [r.index, r]));
-      let k = 0;
-      // Results go back onto exactly the rows that were sent (the ready ones, in order).
-      const sent = new Set(ready.map((r) => r.rowNo));
-      const next = rows.map((r) =>
-        !sent.has(r.rowNo)
-          ? r
-          : { ...r, result: byIndex.get(k++) ?? { success: false, message: "No answer from the server" } }
-      );
+
+      /*
+       * UPDATES — one by one through /asset/update, the same save as EDIT on Add Device: the
+       * server checks it the same way and writes every changed field to the device's change
+       * log (old value, new value, who, when).
+       */
+      for (const r of updates) {
+        let result;
+        try {
+          const res = await updateAsset(r.payload);
+          result =
+            res?.status_code === 200
+              ? { success: true, updated: true, reference_no: res.response?.reference_no || r.update.ref, message: "Updated" }
+              : { success: false, message: res?.message || "Could not update" };
+        } catch (err) {
+          result = { success: false, message: explain(err) };
+        }
+        next = next.map((x) => (x.rowNo === r.rowNo ? { ...x, result } : x));
+      }
+
       setRows(next);
       setImported(true);
 
-      const added = next.filter((r) => r.result?.success).length;
-      // Not sent and no errors: already added or already uploaded — skipped, not failed.
-      const skipped = next.filter((r) => !r.errors.length && !sent.has(r.rowNo)).length;
-      const failed = next.length - added - skipped;
+      const added = next.filter((r) => r.result?.success && !r.result.updated).length;
+      const updated = next.filter((r) => r.result?.updated).length;
+      // Not sent and no errors: already added as it is — skipped, not failed.
+      const skipped = next.filter((r) => !r.errors.length && !r.result).length;
+      const failed = next.length - added - updated - skipped;
 
       /*
-       * Record the sheet: its name, fingerprint, counts, who uploaded it and every row as shown
-       * with its result — so it appears under UPLOADED SHEETS and cannot be uploaded again.
+       * Record the sheet: its name, fingerprint, counts, who uploaded it and every NEW row saved
+       * — so it appears under UPLOADED SHEETS and cannot be uploaded again. Updated devices are
+       * already in that list from before, so they are not listed twice.
        */
-      const logged = await logUpload({
-        upload_type: type,
-        file_name: fileName,
-        file_hash: hash,
-        total_rows: next.length,
-        imported: added,
-        failed,
-        // Only the rows saved, and only the sheet's own values (no row number / status / message).
-        rows: toTableRows(next.filter((r) => r.result?.success)).map(({ id: _id, row_no: _rowNo, ...values }) => values),
-        uploaded_by_code: String(user?.emp_code ?? user?.user_id ?? ""),
-        uploaded_by_name: [user?.userFname, user?.userLname].filter(Boolean).join(" ") || user?.displayName || "",
-      }).catch((err) => {
-        console.error("Bulk upload: could not record the sheet", err);
-        return null;
-      });
+      const logged =
+        added + updated > 0
+          ? await logUpload({
+              upload_type: type,
+              file_name: fileName,
+              file_hash: hash,
+              total_rows: next.length,
+              imported: added,
+              failed,
+              // Only the rows saved, and only the sheet's own values (no row number / status / message).
+              rows: toTableRows(next.filter((r) => r.result?.success && !r.result.updated)).map(
+                ({ id: _id, row_no: _rowNo, ...values }) => values
+              ),
+              uploaded_by_code: String(user?.emp_code ?? user?.user_id ?? ""),
+              uploaded_by_name: [user?.userFname, user?.userLname].filter(Boolean).join(" ") || user?.displayName || "",
+            }).catch((err) => {
+              console.error("Bulk upload: could not record the sheet", err);
+              return null;
+            })
+          : null;
       // The devices are saved either way; only the record of the sheet is missing — say so.
       const notRecorded = added > 0 && logged?.status_code !== 200;
       /*
-       * Once recorded, this sheet's imported rows are part of EVERY ROW UPLOADED (reloaded
-       * here), so they leave the "this file" part of the table — only rows that did not go in
-       * stay there, to download, fix and upload again.
+       * Once recorded, this sheet's saved rows leave the "this file" part of the table — only
+       * rows that did not go in stay there, to download, fix and upload again.
        */
       if (logged?.status_code === 200) {
-        // What is left to fix: errors and failed rows. Imported and skipped rows are done.
+        // What is left to fix: errors and failed rows. Saved and skipped rows are done.
         const left = next.filter((r) => r.errors.length || (r.result && !r.result.success));
         if (left.length) setRows(left);
         else {
@@ -848,7 +1088,6 @@ export default function BulkUploadPanel({ type }) {
       await loadUploaded();
 
       // Saved, but with a warning (a device saved whose employee could not be assigned).
-      const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
       const noted = next.filter((r) => r.result?.success && /^Saved, but/i.test(r.result.message ?? ""));
       const notes = noted.length
         ? `<div style="font-size:12px;color:#b45309;text-align:left;margin-top:8px">${noted
@@ -857,36 +1096,34 @@ export default function BulkUploadPanel({ type }) {
         : "";
 
       /*
-       * WHAT WAS ADDED: for devices, only the Reference No each was saved with — one per line,
-       * to note straight from here. Servers and software have no Reference No, so their names.
+       * WHAT WAS SAVED: for devices the Reference No (one per line, to note straight from here);
+       * servers and software have none, so their names. Updated devices are listed by name.
        */
-      const savedRows = next.filter((r) => r.result?.success);
-      const savedItems = savedRows
-        .map((r) =>
-          type === "device"
-            ? r.result.reference_no
-            : r.result.name ?? r.values.server_name ?? r.values.product_name
-        )
+      const itemList = (heading, items) =>
+        items.length
+          ? `<div style="max-height:160px;overflow-y:auto;margin-top:6px;font-size:13px">` +
+            `<p style="font-weight:600;margin-bottom:4px">${heading}</p>` +
+            items.map((v) => `<div style="font-weight:600;color:#3482AE;padding:2px 0">${esc(v)}</div>`).join("") +
+            `</div>`
+          : "";
+      const addedItems = next
+        .filter((r) => r.result?.success && !r.result.updated)
+        .map((r) => (type === "device" ? r.result.reference_no : r.result.name ?? r.values.server_name ?? r.values.product_name))
         .filter(Boolean);
-      const savedList = savedItems.length
-        ? `<div style="max-height:200px;overflow-y:auto;margin-top:6px;font-size:13px">` +
-          `<p style="font-weight:600;margin-bottom:4px">${type === "device" ? "Reference No" : "Added"}</p>` +
-          savedItems
-            .map((v) => `<div style="font-weight:600;color:#3482AE;padding:2px 0">${esc(v)}</div>`)
-            .join("") +
-          `</div>`
-        : "";
+      const updatedItems = next.filter((r) => r.result?.updated).map((r) => `${nameOf(r)}${r.result.reference_no ? ` (${r.result.reference_no})` : ""}`);
 
       Swal.fire({
         icon: failed ? "warning" : "success",
         title: failed ? "Upload finished with errors" : "Upload complete",
         html:
-          `<p><b>Uploaded:</b> ${added}</p>` +
-          savedList +
+          (added ? `<p><b>Uploaded:</b> ${added}</p>` : "") +
+          itemList(type === "device" ? "Reference No" : "Added", addedItems) +
+          (updated ? `<p style="margin-top:8px"><b>Updated:</b> ${updated}</p>` : "") +
+          itemList("Updated", updatedItems) +
           notes +
-          (skipped ? `<p><b>Skipped (already added):</b> ${skipped}</p>` : "") +
+          (skipped ? `<p><b>Skipped (already added, no change):</b> ${skipped}</p>` : "") +
           (failed
-            ? `<p style="color:#dc3545"><b>Not uploaded:</b> ${failed}</p><p style="font-size:12px">Fix them in the sheet and upload them again.</p>`
+            ? `<p style="color:#dc3545"><b>Not saved:</b> ${failed}</p><p style="font-size:12px">Fix them in the sheet and upload them again.</p>`
             : "") +
           (notRecorded
             ? `<p style="color:#b45309;font-size:12px">The devices are saved, but this sheet could not be recorded${logged?.message ? ` (${logged.message})` : ""}. They will still show in Open Devices.</p>`
@@ -930,6 +1167,18 @@ export default function BulkUploadPanel({ type }) {
    * THE TABLE: the file being uploaded now first (its own ids, so they never clash), then
    * EVERY ROW ALREADY UPLOADED from earlier sheets — so 50 before and 10 now are all 60.
    */
+  /*
+   * A VIEWER SEES ONLY WHAT IS ASSIGNED TO THEM (Reporting Person): uploaded rows in their
+   * plant(s) and, for devices, of their device types. Rows with no plant (software) stay.
+   */
+  const assignedToViewer = (row) => {
+    if (row.plant && !scope.allowsPlant(row.plant)) return false;
+    if (type === "device" && row.device_type) {
+      return devices.some((d) => String(d.device_name ?? "").trim().toLowerCase() === String(row.device_type).trim().toLowerCase());
+    }
+    return true;
+  };
+
   const tableData = useMemo(() => {
     /*
      * A device is listed ONCE. This file's rows leave out any already imported — by this file
@@ -945,10 +1194,10 @@ export default function BulkUploadPanel({ type }) {
         uploaded_on: imported ? "-" : "Not uploaded yet",
         uploaded_by: "",
       })),
-      ...uploaded,
+      ...(viewer ? uploaded.filter(assignedToViewer) : uploaded),
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, uploaded, uploadedNames, nameField, fileName, imported, config]);
+  }, [rows, uploaded, uploadedNames, nameField, fileName, imported, config, viewer, devices]);
 
   /*
    * Arranged LIKE THE EXCEL SHEET: SR. NO, then every column of the sheet in the template's
@@ -1045,6 +1294,11 @@ export default function BulkUploadPanel({ type }) {
           *   3. UPLOAD FILE — full width, once a file is chosen, with a spinner while it uploads.
           * The rows are still checked as soon as the file is chosen (the boxes and table below).
           */}
+        {viewer ? (
+          <p className="text-center text-[12px] text-gray-500">
+            View only — the {config.title.toLowerCase()} rows uploaded so far are listed below.
+          </p>
+        ) : (
         <div className="mx-auto max-w-3xl">
           <button
             type="button"
@@ -1093,7 +1347,8 @@ export default function BulkUploadPanel({ type }) {
             <button
               type="button"
               onClick={onImport}
-              disabled={importing || ready.length === 0}
+              // Clickable when every row is already added too — the popup then says so.
+              disabled={importing || (ready.length === 0 && updates.length === 0 && summary.skipped === 0)}
               className="mt-6 flex w-full items-center justify-center gap-3 rounded-lg bg-[#3482AE] px-6 py-4 text-white shadow-md transition-all hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {importing ? (
@@ -1105,15 +1360,18 @@ export default function BulkUploadPanel({ type }) {
                 <>
                   <Upload className="h-5 w-5" />
                   <span className="text-[15px] font-semibold">
-                    {ready.length > 0
-                      ? `Upload File (${ready.length} row${ready.length === 1 ? "" : "s"})`
-                      : "Nothing to upload — fix the rows below"}
+                    {ready.length + updates.length > 0
+                      ? `Upload File (${ready.length + updates.length} row${ready.length + updates.length === 1 ? "" : "s"})`
+                      : summary.invalid > 0
+                        ? "Nothing to upload — fix the rows below"
+                        : "Nothing new to upload — already added"}
                   </span>
                 </>
               )}
             </button>
           )}
         </div>
+        )}
 
         {/*
           * Every row — this file's and every one uploaded before — in the project's own table:
@@ -1176,12 +1434,35 @@ export default function BulkUploadPanel({ type }) {
             }
             return <>{name} is already added — you can&apos;t upload it again.</>;
           };
-          const skippedNote = skipped.length > 0 && (
-            <ul className="mt-3 max-h-32 space-y-1 overflow-y-auto text-[12px] text-gray-700">
-              {skipped.map((r) => (
-                <li key={r.rowNo}>{skippedLine(r)}</li>
+          /*
+           * TO BE UPDATED — devices already added whose values changed in the sheet: one line each,
+           * "HR602 will be updated — Processor: i3 → i5". Saved (and logged) on UPLOAD FILE.
+           */
+          const pendingUpdates = rows.filter((r) => r.update && !r.result && !r.errors.length);
+          const showValue = (c, v) => (v === "" ? "empty" : c.type === "date" ? showDate(v) : v);
+          const updateNote = pendingUpdates.length > 0 && (
+            <ul className="mt-3 max-h-32 space-y-1 overflow-y-auto text-[12px] text-blue-800">
+              {pendingUpdates.map((r) => (
+                <li key={r.rowNo}>
+                  <span className="normal-case font-semibold">{nameOf(r)}</span> will be updated —{" "}
+                  <span className="normal-case">
+                    {r.update.changes.map((c) => `${c.label}: ${showValue(c, c.from)} → ${showValue(c, c.to)}`).join(", ")}
+                  </span>
+                </li>
               ))}
             </ul>
+          );
+          const skippedNote = (skipped.length > 0 || updateNote) && (
+            <>
+              {updateNote}
+              {skipped.length > 0 && (
+                <ul className="mt-3 max-h-32 space-y-1 overflow-y-auto text-[12px] text-gray-700">
+                  {skipped.map((r) => (
+                    <li key={r.rowNo}>{skippedLine(r)}</li>
+                  ))}
+                </ul>
+              )}
+            </>
           );
           if (!toFix.length) return skippedNote || null;
           const why = (r) => (r.errors.length ? r.errors.join("; ") : r.result?.message ?? "Not uploaded");

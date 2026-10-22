@@ -59,6 +59,8 @@ export default function SearchableSelect({
   // Optional (option) => node: draws each option (and the chosen one) as more than plain
   // text, e.g. a coloured badge. Typing still searches the plain label.
   formatOptionLabel,
+  // "bottom" (always below) unless a field at the very foot of a form asks for "auto".
+  menuPlacement = "bottom",
 }) {
   const styles = { ...nativeSelectStyles };
   if (maxMenuHeight) {
@@ -114,8 +116,10 @@ export default function SearchableSelect({
         placeholder={placeholder ?? toSearchPlaceholder(emptyLabel)}
         noOptionsMessage={() => "No match"}
         /* Always below the field, never flipped above it near the bottom of a page — the
-           page scrolls to make room instead, the same as the react-selects on the forms. */
-        menuPlacement="bottom"
+           page scrolls to make room instead, the same as the react-selects on the forms. The
+           one exception: the LAST field of a form with no room left beneath it passes "auto",
+           so its list opens above rather than off the screen. */
+        menuPlacement={menuPlacement}
         maxMenuHeight={maxMenuHeight ?? 300}
         formatOptionLabel={formatOptionLabel}
         menuPortalTarget={typeof document !== "undefined" ? document.body : null}

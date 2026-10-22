@@ -55,7 +55,12 @@ export default function ProtectedLayout({ children }) {
               black against this blue header on hover/click. */}
           <SidebarTrigger className="p-0 bg-transparent hover:bg-transparent border-none shadow-none text-white hover:text-white" />
           <div className="flex items-center space-x-4">
-            <button className="flex items-center space-x-2 px-3 py-1.5 rounded transition-colors">
+            {/*
+              * HELP — the user guide (public/user_manual/help.html) is NOT opened yet; it is kept
+              * hidden until it is ready. To show it, make this an <a> to
+              * `${BASE_PATH}/user_manual/help.html` with target="_blank".
+              */}
+            <button type="button" className="flex items-center space-x-2 px-3 py-1.5 rounded transition-colors">
               <HelpCircle className="w-5 h-5" />
               <span>HELP</span>
             </button>

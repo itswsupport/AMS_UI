@@ -3,9 +3,9 @@
 import { useContext } from "react";
 import { useRouter } from "next/navigation";
 import { AuthContext } from "@/context/AuthContext";
-import { Sidebar, SidebarContent, SidebarGroup, SidebarHeader } from "@/components/ui/sidebar";
+import { Sidebar, SidebarContent, SidebarGroup, SidebarHeader, useSidebar } from "@/components/ui/sidebar";
 import { getUserRole, getUserRoles, ROLES } from "@/lib/permissions";
-import { User, LogOut, LayoutDashboard, FileText, Eye, Settings, Home } from "lucide-react";
+import { User, LogOut, LayoutDashboard, Settings, Home } from "lucide-react";
 
 /** Nav entries per role. The sidebar renders exactly one of these lists. */
 const NAV = {
@@ -26,9 +26,8 @@ const NAV = {
     { label: "SETTING", path: "/AdminDashboard/Setting", icon: Settings },
   ],
   [ROLES.VIEWER]: [
-    { label: "DASHBOARD", path: "/ViewerDashboard", icon: LayoutDashboard },
-    { label: "ASSET OVERVIEW", path: "/ViewerDashboard/AssetOverview", icon: Eye },
-    { label: "REPORTS", path: "/Reports", icon: FileText },
+    // The user screens (devices, servers, software, uploads) — to look at only, nothing to change.
+    { label: "USER DASHBOARD", path: "/UserDashboard", icon: LayoutDashboard },
   ],
   /*
    * HOME then USER DASHBOARD, and LOGOUT is appended to every role's menu further down.
@@ -53,6 +52,12 @@ const NAV = {
 export function AppSidebar() {
   const { user, logout } = useContext(AuthContext);
   const router = useRouter();
+  // On a phone the menu slides over the page — close it once an entry is tapped.
+  const { isMobile, setOpenMobile } = useSidebar();
+  const go = (path) => {
+    router.push(path);
+    if (isMobile) setOpenMobile(false);
+  };
 
   const role = getUserRole(user);
   const roles = getUserRoles(user);
@@ -137,7 +142,7 @@ export function AppSidebar() {
                     {/* No selected-state background. Only the hover tint remains, so the
                         menu keeps one flat colour while you move between pages. */}
                     <button
-                      onClick={() => router.push(item.path)}
+                      onClick={() => go(item.path)}
                       className="flex items-center gap-3 px-4 py-2.5 font-semibold text-sm w-full text-left text-white"
                     >
                       <Icon className="w-5 h-5 shrink-0" />

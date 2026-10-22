@@ -17,7 +17,7 @@ export default function MasterPage({ params }) {
   if (!master) {
     return (
       <ProtectedRoute permission={PERMISSIONS.MANAGE_MASTERS}>
-        <div className="p-6">
+        <div className="p-3 sm:p-6">
           <PageTitle title="SETTING" />
           <div className="mt-6 rounded-[3px] bg-white p-8 text-center shadow-sm">
             <p className="text-sm font-semibold text-[#3482AE]">No such master</p>
@@ -41,7 +41,7 @@ export default function MasterPage({ params }) {
 
   return (
     <ProtectedRoute permission={PERMISSIONS.MANAGE_MASTERS}>
-      <div className="p-6">
+      <div className="p-3 sm:p-6">
         {/* showBack ON, unlike the Setting page: this one is navigated INTO, so there has to
             be a way back that is not the sidebar. */}
         <PageTitle title={title.toUpperCase()} />

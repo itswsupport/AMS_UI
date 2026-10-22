@@ -18,6 +18,7 @@ import { useAuth } from "@/context/AuthContext";
 import UserLogTable from "@/components/ui/common/UserLogTable";
 import { getProductList } from "@/services/productService";
 import { getLicenseList } from "@/services/licenseService";
+import { softwareErrors, LICENSE_DIGITS } from "@/lib/softwareRules";
 
 import SearchableSelect from "@/components/ui/common/SearchableSelect";
 /**
@@ -103,6 +104,35 @@ function softwareChanges(saved, form) {
   }));
 }
 
+/** A red message under a field, marked so SUBMIT can scroll to the first one. */
+function FieldError({ msg }) {
+  if (!msg) return null;
+  return (
+    <p role="alert" data-field-error="" className="mt-1 text-[11px] font-semibold text-red-600 normal-case">
+      {msg}
+    </p>
+  );
+}
+
+const Req = () => <span className="text-red-500">*</span>;
+
+/** The shared dropdown look with a red border, for a dropdown SUBMIT found wrong. */
+const redSelectStyles = {
+  ...nativeSelectStyles,
+  control: (base, state) => ({
+    ...(nativeSelectStyles.control ? nativeSelectStyles.control(base, state) : base),
+    borderColor: "#ef4444",
+  }),
+};
+
+/**
+ * A number box that takes WHOLE numbers only: "e", "+", "." and "," are refused as typed (a
+ * browser's number box lets them in), and "-" only where a negative is allowed.
+ */
+const blockKeys = (allowNegative) => (e) => {
+  if (["e", "E", "+", ".", ","].includes(e.key) || (!allowNegative && e.key === "-")) e.preventDefault();
+};
+
 export default function AddSoftware({
   barColor,
   onSaved,
@@ -114,6 +144,8 @@ export default function AddSoftware({
   const [form, setForm] = useState(BLANK);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  /** True after SUBMIT is pressed: from then on each field's red message follows what is typed. */
+  const [attempted, setAttempted] = useState(false);
   const [loadError, setLoadError] = useState("");
   const { user } = useAuth();
 
@@ -194,11 +226,23 @@ export default function AddSoftware({
     });
     setForm(filled);
     setError("");
+    setAttempted(false);
   }, [editing]);
 
   const set = (key) => (e) => {
     const value = e.target.value;
     setForm((f) => ({ ...f, [key]: value }));
+  };
+
+  /**
+   * The two licence counts: whole numbers of at most 2 digits (and a leading "-" for Excess /
+   * Deficiency). Anything else typed or pasted is dropped, and a third digit is not taken.
+   */
+  const setCount = (key, allowNegative) => (e) => {
+    const raw = String(e.target.value ?? "");
+    const minus = allowNegative && raw.trim().startsWith("-") ? "-" : "";
+    const digits = raw.replace(/\D/g, "").slice(0, LICENSE_DIGITS);
+    setForm((f) => ({ ...f, [key]: minus + digits }));
   };
 
   /*
@@ -240,15 +284,34 @@ export default function AddSoftware({
   const reset = () => {
     setForm(BLANK);
     setError("");
+    setAttempted(false);
   };
+
+  /**
+   * EVERY CHECK, by field: Product Name required, then the register's rules (lib/softwareRules):
+   * both counts whole numbers and filled, Excess not above Total, Renewal Date needed for a
+   * Subscription and empty for a Perpetual licence.
+   */
+  const collectErrors = () => {
+    const out = {};
+    if (!String(form.product_name ?? "").trim()) out.product_name = "Product Name is required.";
+    return { ...out, ...softwareErrors(form) };
+  };
+
+  // Shown only once SUBMIT has been pressed, then kept in step with every change.
+  const errors = attempted ? collectErrors() : {};
 
   const onSubmit = async (e) => {
     e.preventDefault();
     if (readOnly) return;
 
-    if (!form.product_name.trim()) return setError("Select a product.");
-    if (form.total_licenses_acquired !== "" && Number(form.total_licenses_acquired) < 0) {
-      return setError("Total licenses acquired cannot be negative.");
+    setAttempted(true);
+    if (Object.keys(collectErrors()).length) {
+      setError("");
+      setTimeout(() => {
+        document.querySelector("[data-field-error]")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 0);
+      return;
     }
 
     /*
@@ -298,7 +361,9 @@ export default function AddSoftware({
       }
 
       // Awaited, so the confirmation is seen before the list replaces the form.
-      await savedToast(targetId ? "Software updated successfully" : "Software added successfully");
+      await savedToast(targetId ? "Software updated successfully" : "Software added successfully", {
+        "Software Name": res?.response?.product_name || form.product_name.trim(),
+      });
       reset();
       if (onSaved) onSaved();
     } catch {
@@ -329,10 +394,14 @@ export default function AddSoftware({
 
       <form
         onSubmit={onSubmit}
-        className="bg-white rounded-b-[3px] shadow-sm p-6"
+        className="bg-white rounded-b-[3px] shadow-sm p-4 sm:p-6"
         style={{ "--ams-disabled-bg": readOnly ? VIEW_BG : NOT_READY_BG }}
       >
         {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+        {/* Goes away by itself once every red field is put right. */}
+        {Object.keys(errors).length > 0 && (
+          <p className="mb-3 text-sm text-red-600">Please correct the fields marked in red.</p>
+        )}
         {loadError && <p className="mb-3 text-sm text-amber-600">{loadError}</p>}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -353,8 +422,9 @@ export default function AddSoftware({
               menuPlacement="bottom"
               menuPortalTarget={typeof document !== "undefined" ? document.body : null}
               components={nativeSelectComponents}
-              styles={nativeSelectStyles}
+              styles={errors.product_name ? redSelectStyles : nativeSelectStyles}
             />
+            <FieldError msg={errors.product_name} />
             {!disabled && productOptions.length === 0 && (
               <p className="mt-1 text-[11px] font-semibold text-amber-600">
                 No product has been added. Add one in Product Master first.
@@ -363,32 +433,41 @@ export default function AddSoftware({
           </div>
 
           <div>
-            <label className={LABEL_CLS}>Total Licenses Acquired</label>
+            <label className={LABEL_CLS}>
+              Total Licenses Acquired <Req />
+            </label>
             <input
-              type="number"
-              min="0"
-              step="1"
+              type="text"
+              inputMode="numeric"
+              maxLength={LICENSE_DIGITS}
               value={form.total_licenses_acquired}
-              onChange={set("total_licenses_acquired")}
+              onChange={setCount("total_licenses_acquired", false)}
+              onKeyDown={blockKeys(false)}
               disabled={disabled}
-              placeholder="e.g. 50"
-              className={FIELD_CLS}
+              placeholder="0 to 99"
+              className={`${FIELD_CLS}${errors.total_licenses_acquired ? " border-red-500!" : ""}`}
             />
+            <FieldError msg={errors.total_licenses_acquired} />
           </div>
 
           <div>
-            <label className={LABEL_CLS}>License Excess or Deficiency</label>
+            <label className={LABEL_CLS}>
+              License Excess or Deficiency <Req />
+            </label>
             {/* No min: a negative figure is a deficiency, which is the number worth acting
                 on. Clamping it at zero would hide exactly the rows that need attention. */}
             <input
-              type="number"
-              step="1"
+              type="text"
+              inputMode="numeric"
+              maxLength={LICENSE_DIGITS + 1}
               value={form.license_excess_deficiency}
-              onChange={set("license_excess_deficiency")}
+              onChange={setCount("license_excess_deficiency", true)}
+              onKeyDown={blockKeys(true)}
               disabled={disabled}
-              placeholder="e.g. -5"
-              className={FIELD_CLS}
+              placeholder="-99 to 99"
+              className={`${FIELD_CLS}${errors.license_excess_deficiency ? " border-red-500!" : ""}`}
             />
+            <FieldError msg={errors.license_excess_deficiency} />
           </div>
 
           <div>
@@ -427,14 +506,20 @@ export default function AddSoftware({
           </div>
 
           <div>
-            <label className={LABEL_CLS}>Renewal Date</label>
+            <label className={LABEL_CLS}>
+              {/* Required only for a Subscription — a Perpetual licence never renews. */}
+              Renewal Date {String(form.license_type ?? "").toLowerCase().includes("subscription") && <Req />}
+            </label>
             <input
               type="date"
+              min="1990-01-01"
+              max="2100-12-31"
               value={form.renewal_date}
               onChange={set("renewal_date")}
               disabled={disabled}
-              className={FIELD_CLS}
+              className={`${FIELD_CLS}${errors.renewal_date ? " border-red-500!" : ""}`}
             />
+            <FieldError msg={errors.renewal_date} />
           </div>
 
           <div>
@@ -444,6 +529,8 @@ export default function AddSoftware({
               onChange={set("status")}
               disabled={disabled}
               className={SELECT_CLS}
+              // The last field of the form — opens above when there is no room below.
+              menuPlacement="auto"
             >
               <option value={1}>Active</option>
               <option value={0}>Inactive</option>
@@ -462,7 +549,7 @@ export default function AddSoftware({
           * that row, and their open lists (up to ~170px) must stay inside the white card, not
           * hang below it.
           */}
-        <div className="mt-28 flex justify-center gap-2 pb-4">
+        <div className="mt-6 flex flex-wrap justify-center gap-2 pb-4">
           {readOnly ? (
             <>
               {/* EDIT opens this same record to change; UPDATE then saves it. Own key + click

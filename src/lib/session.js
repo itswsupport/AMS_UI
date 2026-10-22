@@ -7,8 +7,11 @@
 /** 30 minutes without activity ends the session. */
 export const SESSION_IDLE_MS = 30 * 60 * 1000;
 
-/** How often a tab checks whether the session was ended in another tab. */
-export const SESSION_CHECK_MS = 15 * 1000;
+/**
+ * How often a tab checks whether the 30 idle minutes are up (or the session was ended in
+ * another tab) — every second, so the session ends at 30:00, within a second, on its own.
+ */
+export const SESSION_CHECK_MS = 1000;
 
 /** The localStorage key holding the last activity time (ms). */
 export const LAST_ACTIVITY_KEY = "ams_last_activity";
@@ -17,7 +20,7 @@ export const LAST_ACTIVITY_KEY = "ams_last_activity";
 export const USER_KEY = "ams_user";
 
 // A localStorage write is synchronous — not one per mouse move.
-const WRITE_THROTTLE_MS = 5000;
+const WRITE_THROTTLE_MS = 1000;
 let lastWrite = 0;
 
 /**

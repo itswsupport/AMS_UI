@@ -9,6 +9,10 @@ const nextConfig = {
   // Enable standalone output for Docker
   output: "standalone",
 
+  // The build folder — ".next" as always; NEXT_DIST_DIR lets a production build be made beside
+  // a running dev server (e.g. NEXT_DIST_DIR=.next-prod) without either disturbing the other.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
+
   // Keep trailing slashes to prevent redirect loops with nginx
   trailingSlash: true,
 
@@ -19,7 +23,11 @@ const nextConfig = {
   },
 
   compress: true,
-  reactStrictMode: true,
+  /*
+   * OFF: in development Strict Mode runs every effect twice, so each screen called every API
+   * twice. Each API is now called once. (Production builds never doubled them.)
+   */
+  reactStrictMode: false,
 
   eslint: {
     ignoreDuringBuilds: true,

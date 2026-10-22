@@ -6,6 +6,8 @@ import DashboardCard from "@/components/ui/common/DashboardCard";
 import AddSoftware from "./_AddSoftware";
 import ListSoftware from "./_ListSoftware";
 import { Plus, List } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
+import { isViewer } from "@/lib/permissions";
 
 /**
  * Software — reached from the card on the user dashboard.
@@ -33,6 +35,10 @@ export default function SoftwarePage() {
 
   // The sidebar blue, matching the cards and each panel's own title bar.
   const BAR_COLOR = "#3482AE";
+
+  // A VIEWER only ever reads: no ADD SOFTWARE card, no EDIT, no SUBMIT / UPDATE.
+  const { user } = useAuth();
+  const viewer = isViewer(user);
 
   const openAdd = () => {
     setEditing(null);
@@ -62,20 +68,22 @@ export default function SoftwarePage() {
   };
 
   return (
-    <div className="p-6">
+    <div className="p-3 sm:p-6">
       {/* showBack on: this page is navigated INTO, so there has to be a way back that is
           not the sidebar. */}
       <PageTitle title="SOFTWARE" />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* The same icon and size as ADD DEVICE's card. */}
-        <DashboardCard
-          title="Add Software"
-          icon={<Plus className="h-7 w-7" />}
-          variant="primary"
-          onClick={openAdd}
-          tall
-        />
+      <div className="grid grid-cols-2 gap-3 sm:gap-4">
+        {/* The same icon and size as ADD DEVICE's card. A VIEWER adds nothing, so none for them. */}
+        {!viewer && (
+          <DashboardCard
+            title="Add Software"
+            icon={<Plus className="h-7 w-7" />}
+            variant="primary"
+            onClick={openAdd}
+            tall
+          />
+        )}
         <DashboardCard
           title="List Software"
           icon={<List className="h-7 w-7" />}
@@ -91,10 +99,10 @@ export default function SoftwarePage() {
             barColor={BAR_COLOR}
             onSaved={backToList}
             editing={editing}
-            readOnly={readOnly}
+            readOnly={readOnly || viewer}
             onClose={backToList}
-            // EDIT on the view screen: the same record, now open to change.
-            onStartEdit={() => setReadOnly(false)}
+            // EDIT on the view screen: the same record, now open to change. None for a VIEWER.
+            onStartEdit={viewer ? undefined : () => setReadOnly(false)}
           />
         )}
 

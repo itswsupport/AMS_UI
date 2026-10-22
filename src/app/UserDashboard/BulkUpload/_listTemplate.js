@@ -18,7 +18,7 @@
  *
  * @returns the exceljs Workbook
  */
-import { FIELD_FORMATS, onlyChars } from "../../../lib/fieldFormats";
+import { FIELD_FORMATS, formatKeyOf, onlyChars } from "../../../lib/fieldFormats";
 
 export function buildListWorkbook(
   ExcelJS,
@@ -114,6 +114,29 @@ export function buildListWorkbook(
     });
   });
 
+  /*
+   * ---- whole-number columns with a range (Software's licence counts: at most 2 digits) ----
+   * The cell takes only a whole number from `min` to `max`, as the form does.
+   */
+  columns
+    .filter((c) => c.type === "integer" && c.min !== undefined && c.max !== undefined)
+    .forEach((c) => {
+      const l = letter(c.key);
+      ws.dataValidations.add(`${l}${FIRST}:${l}${LAST}`, {
+        type: "whole",
+        operator: "between",
+        allowBlank: true,
+        formulae: [c.min, c.max],
+        showErrorMessage: true,
+        errorStyle: "stop",
+        errorTitle: c.header,
+        error: `${c.header} must be a whole number of at most 2 digits, from ${c.min} to ${c.max}.`,
+        showInputMessage: true,
+        promptTitle: c.header,
+        prompt: `Whole number, ${c.min} to ${c.max}.`,
+      });
+    });
+
   // ---- date columns: a real date only, shown DD/MM/YYYY ----
   columns
     // The warranty's last date has its own rule (after the start) — one rule per cell.
@@ -170,10 +193,12 @@ export function buildListWorkbook(
   }
 
   // ---- code columns (Server S/N, …): only the characters the form takes (lib/fieldFormats.js) ----
+  // A column's `format` names its rule when it differs from its key; a rule with no `chars`
+  // (free text, e.g. Server Description) is too open for this check and left to the upload.
   columns
-    .filter((c) => FIELD_FORMATS[c.key] && !lists[c.key]?.length && !linked[c.key] && c.type !== "date")
+    .filter((c) => FIELD_FORMATS[formatKeyOf(c)]?.chars && !lists[c.key]?.length && !linked[c.key] && c.type !== "date")
     .forEach((c) => {
-      const fmt = FIELD_FORMATS[c.key];
+      const fmt = FIELD_FORMATS[formatKeyOf(c)];
       const l = letter(c.key);
       ws.dataValidations.add(`${l}${FIRST}:${l}${LAST}`, {
         type: "custom",
@@ -182,7 +207,7 @@ export function buildListWorkbook(
         showErrorMessage: true,
         errorStyle: "stop",
         errorTitle: c.header,
-        error: `${fmt.hint} — e.g. ${fmt.sample}.`,
+        error: `${c.header} needs ${fmt.hint.toLowerCase()} — e.g. ${fmt.sample}.`,
         showInputMessage: true,
         promptTitle: c.header,
         prompt: `${fmt.hint}. e.g. ${fmt.sample}`,
@@ -221,8 +246,10 @@ export function buildListWorkbook(
         ? `Pick from the list (by ${columns.find((x) => x.key === linked[c.key].parent)?.header ?? "parent"})`
       : c.type === "date"
         ? "DD/MM/YYYY"
-        : FIELD_FORMATS[c.key]
-          ? FIELD_FORMATS[c.key].hint
+        : FIELD_FORMATS[formatKeyOf(c)]
+          ? FIELD_FORMATS[formatKeyOf(c)].hint
+        : c.type === "integer" && c.min !== undefined && c.max !== undefined
+          ? `Whole number, ${c.min} to ${c.max}`
         : c.type === "number" || c.type === "integer"
           ? "Number"
           : "Text";
@@ -230,7 +257,7 @@ export function buildListWorkbook(
       c.header,
       c.required ? "MANDATORY" : "Optional",
       format,
-      example[c.key] ?? FIELD_FORMATS[c.key]?.sample ?? "",
+      example[c.key] ?? FIELD_FORMATS[formatKeyOf(c)]?.sample ?? "",
     ]);
     if (c.required) row.getCell(2).font = { bold: true, color: { argb: "FFC00000" } };
   });

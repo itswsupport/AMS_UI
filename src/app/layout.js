@@ -21,7 +21,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body
-        className={`${exo.variable} ${geistSans.variable} ${geistMono.variable} antialiased flex h-screen overflow-hidden`}
+        className={`${exo.variable} ${geistSans.variable} ${geistMono.variable} antialiased flex h-screen h-dvh overflow-hidden`}
         suppressHydrationWarning={true}
       >
         <AuthProvider>

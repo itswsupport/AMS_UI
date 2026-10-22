@@ -159,7 +159,7 @@ export default function SelectDevice({ barColor }) {
         </h3>
       </div>
 
-      <form onSubmit={onSubmit} className="bg-white rounded-b-[3px] shadow-sm p-6">
+      <form onSubmit={onSubmit} className="bg-white rounded-b-[3px] shadow-sm p-4 sm:p-6">
         {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
         {loadError && <p className="mb-3 text-sm text-amber-600">{loadError}</p>}
 

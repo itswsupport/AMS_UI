@@ -6,6 +6,7 @@ import { API_BASE_URL } from "@/config/api";
 import { redirectAfterLogout } from "@/config/auth";
 import { MOCK_AUTH_ENABLED, mockLogin } from "@/lib/mockAuth";
 import { markActivity, clearActivity } from "@/lib/session";
+import { clearApiCache } from "@/lib/api";
 
 export const AuthContext = createContext();
 
@@ -15,6 +16,8 @@ export const AuthContext = createContext();
  */
 const PER_USER_PREFIXES = ["ams_bulk_upload_"];
 function clearPerUserData() {
+  // Master lists kept by the API helper start fresh for the next person too.
+  clearApiCache();
   try {
     Object.keys(localStorage)
       .filter((k) => PER_USER_PREFIXES.some((p) => k.startsWith(p)))

@@ -33,6 +33,16 @@ const ALPHANUMERIC = {
   chars: DIGITS + LETTERS,
   hint: "Letters and numbers only (no spaces or symbols)",
 };
+/*
+ * LETTERS ONLY — ready for a field that must hold no digits (none uses it yet): typing a number
+ * there says "… needs letters only — numbers are not allowed", the reverse of NUMBERS_ONLY.
+ */
+export const LETTERS_ONLY = {
+  strip: /[^A-Za-z ]/g,
+  test: /^[A-Za-z ]+$/,
+  chars: LETTERS + " ",
+  hint: "Letters only",
+};
 const PART_SERIAL = {
   strip: /[^A-Za-z0-9:-]/g,
   test: /^[A-Za-z0-9:-]+$/,
@@ -40,7 +50,42 @@ const PART_SERIAL = {
   hint: "Letters, numbers, - and : only",
 };
 
+/*
+ * ADD SERVER's free-text fields, from the server register: a model / product name such as
+ * "HPE ProLiant DL380 Gen10 - P08313-B21" or "ORACLE APPS R12 + DB" — letters, numbers, spaces
+ * and . - + / ( ) & , — and it has to say something: a value of only numbers or symbols ("1",
+ * "6363636363") is not a type or a software name. Server-only keys (`format` on the column), so
+ * ADD DEVICE's OS Service Pack and Description are not affected.
+ */
+const NAME_TEXT = {
+  strip: /[^A-Za-z0-9 .+\-/()&,]/g,
+  test: /^(?=.*[A-Za-z])[A-Za-z0-9 .+\-/()&,]+$/,
+  chars: DIGITS + LETTERS + " .+-/()&,",
+  hint: "Letters, numbers, spaces and . - + / ( ) & , only, with at least one letter",
+};
+
 export const FIELD_FORMATS = {
+  server_type: { ...NAME_TEXT, sample: "HPE ProLiant DL380 Gen10 - P08313-B21" },
+  server_software: { ...NAME_TEXT, sample: "ORACLE APPS R12 + DB" },
+  // "R2", "SP1", "Service Pack 2".
+  server_os_sp: {
+    strip: /[^A-Za-z0-9 .-]/g,
+    test: /^(?=.*[A-Za-z0-9])[A-Za-z0-9 .-]+$/,
+    chars: DIGITS + LETTERS + " .-",
+    hint: "Letters, numbers, spaces, . and - only",
+    sample: "SP1",
+  },
+  /*
+   * A note: any text except < and >, and not only symbols. No `chars` — too open for the Excel
+   * template's character check, so the sheet leaves it to the upload's own check.
+   */
+  server_description: {
+    strip: /[<>]/g,
+    test: /^(?=.*[A-Za-z0-9])[^<>]+$/,
+    chars: null,
+    hint: "Any text except < and >, with at least one letter or number",
+    sample: "Primary SAP application server",
+  },
   po_no: { ...NUMBERS_ONLY, sample: "410000074" },
   asset_code: { ...NUMBERS_ONLY, sample: "1900058" },
   service_tag: { ...ALPHANUMERIC, sample: "FJWG9F2" },
@@ -72,20 +117,28 @@ export const cleanField = (key, value) => {
 export const onlyChars = (cell, chars) =>
   `SUMPRODUCT(--ISNUMBER(FIND(MID(${cell},ROW(INDIRECT("1:"&LEN(${cell}))),1),"${chars}")))=LEN(${cell})`;
 
+/** "letters", "numbers", "spaces", "symbols" — the kinds of character in a refused set. */
+const kindsOf = (chars) => {
+  const kinds = [];
+  if (chars.some((ch) => /[A-Za-z]/.test(ch))) kinds.push("letters");
+  if (chars.some((ch) => /[0-9]/.test(ch))) kinds.push("numbers");
+  if (chars.some((ch) => ch === " ")) kinds.push("spaces");
+  if (chars.some((ch) => /[^A-Za-z0-9 ]/.test(ch))) kinds.push("symbols");
+  return kinds.length > 1 ? `${kinds.slice(0, -1).join(", ")} and ${kinds.at(-1)}` : kinds[0];
+};
+
 /**
- * What to say the moment a refused character is typed or pasted: `"A" is not allowed — numbers
- * only`. Null when everything typed fits the field (or the field has no rule).
+ * What to say the moment a refused character is typed or pasted, naming the field and what it
+ * takes: "PO No. needs numbers only — letters are not allowed", and the reverse for a
+ * letters-only field: "… needs letters only — numbers are not allowed". Null when everything
+ * typed fits the field (or the field has no rule).
  */
-export const typedWarning = (key, raw) => {
+export const typedWarning = (key, raw, label = "This field") => {
   const f = FIELD_FORMATS[key];
   if (!f) return null;
   const refused = [...new Set(String(raw ?? "").match(f.strip) ?? [])];
   if (!refused.length) return null;
-  const shown = refused
-    .slice(0, 3)
-    .map((ch) => (ch === " " ? "Space" : `"${ch}"`))
-    .join(", ");
-  return `${shown} ${refused.length > 1 ? "are" : "is"} not allowed — ${f.hint.toLowerCase()}`;
+  return `${label} needs ${f.hint.toLowerCase()} — ${kindsOf(refused)} are not allowed.`;
 };
 
 /** Why a filled-in value does not fit its field ("PO No.: numbers only"), or null if it does. */
@@ -93,5 +146,11 @@ export const fieldFormatError = (key, label, value) => {
   const f = FIELD_FORMATS[key];
   const text = String(value ?? "").trim();
   if (!f || text === "" || f.test.test(text)) return null;
-  return `${label}: ${f.hint.toLowerCase()} — "${text}" is not allowed`;
+  const refused = [...new Set(text.match(f.strip) ?? [])];
+  // Every character allowed, yet refused: it has no letter (or no letter / number) in it.
+  if (!refused.length) return `${label} needs ${f.hint.toLowerCase()} — "${text}" is not valid`;
+  return `${label} needs ${f.hint.toLowerCase()} — "${text}" has ${kindsOf(refused)}`;
 };
+
+/** The FIELD_FORMATS key a column / field is checked with: its own `format`, else its key. */
+export const formatKeyOf = (column) => column?.format ?? column?.key;

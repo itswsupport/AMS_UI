@@ -14,7 +14,7 @@ import PageTitle from "@/components/ui/common/PageTitle";
  */
 export default function UserHome() {
   return (
-    <div className="p-6">
+    <div className="p-3 sm:p-6">
       {/* showBack off: this is the top of the section, there is nothing above it. */}
       <PageTitle title="HOME" showBack={false} />
     </div>

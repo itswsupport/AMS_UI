@@ -26,11 +26,11 @@ export default function Setting() {
 
   return (
     <ProtectedRoute permission={PERMISSIONS.MANAGE_MASTERS}>
-      <div className="p-6">
+      <div className="p-3 sm:p-6">
         {/* showBack off: this IS the top of the section, there is nothing above it. */}
         <PageTitle title="SETTING" showBack={false} />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
           {MASTERS.map((master) => (
             <DashboardCard
               key={master.key}

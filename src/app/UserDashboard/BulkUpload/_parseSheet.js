@@ -66,7 +66,9 @@ export function parseSheet(XLSX, data, config, ctx) {
     const skip = checked.skip || null;
     // skipInfo: { ref, holder } of a device already added — its Reference No is shown as a link.
     const skipInfo = skip ? checked.skipInfo ?? null : null;
-    rows.push({ rowNo, values, payload: checked.payload, errors: skip ? [] : errors, skip, skipInfo, result: null });
+    // update: { id, ref, changes } — a device already added whose sheet values changed (UPDATE).
+    const update = skip ? null : checked.update ?? null;
+    rows.push({ rowNo, values, payload: checked.payload, errors: skip ? [] : errors, skip, skipInfo, update, result: null });
   });
   return { rows };
 }

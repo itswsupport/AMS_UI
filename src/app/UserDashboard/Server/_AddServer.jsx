@@ -16,7 +16,7 @@ import {
   getServerChangeLog,
 } from "@/services/serverAssetService";
 import { useAuth } from "@/context/AuthContext";
-import { cleanField, typedWarning } from "@/lib/fieldFormats";
+import { cleanField, typedWarning, fieldFormatError } from "@/lib/fieldFormats";
 import UserLogTable from "@/components/ui/common/UserLogTable";
 // The NAME dropdown is the admin's Server Master, not free text.
 import { getServerList } from "@/services/serverService";
@@ -173,15 +173,51 @@ function Section({ title, children }) {
 }
 
 /**
- * With `format` (a key of FIELD_FORMATS) a refused character is dropped as typed and a warning
- * says so right then, fading after a few seconds — as on ADD DEVICE.
+ * THE TYPED FIELDS and the rule each is checked with (lib/fieldFormats) — the same rules Bulk
+ * Upload and the Excel template use for these columns.
  */
-function TextField({ label, value, onChange, disabled, placeholder, maxLength = 150, format }) {
+const TYPED_FIELDS = [
+  { key: "server_type", label: "Type", format: "server_type" },
+  { key: "serial_no", label: "S/N", format: "serial_no" },
+  { key: "os_service_pack", label: "OS Service Pack", format: "server_os_sp" },
+  { key: "other_software_1", label: "Other Software 1", format: "server_software" },
+  { key: "other_software_2", label: "Other Software 2", format: "server_software" },
+  { key: "description", label: "Description", format: "server_description" },
+];
+const FORMAT_OF = Object.fromEntries(TYPED_FIELDS.map((f) => [f.key, f.format]));
+
+/**
+ * MANDATORY — the fields filled in on EVERY server of the register's SERVER sheet
+ * (Asset_2026-27.xlsx): name, type, IP, plant, dept., location, warranty status and dates, OS.
+ * S/N, Processor, RAM, HDD, System Type, Service Pack and Software are blank on some servers
+ * there, so they stay optional. Warranty Start Date is asked because Total Warranty (always
+ * filled in the sheet) is worked out from it.
+ */
+const REQUIRED_FIELDS = [
+  ["server_name", "Server Name"],
+  ["server_type", "Type"],
+  ["ip_address", "IP Address"],
+  ["plant", "Plant"],
+  ["department", "Dept."],
+  ["location", "Location"],
+  ["warranty_status", "Warranty Status"],
+  ["warranty_start_date", "Warranty Start Date"],
+  ["last_date_of_warranty", "Last Date Of Warranty"],
+  ["os_name", "OS"],
+];
+const IS_REQUIRED = new Set(REQUIRED_FIELDS.map(([k]) => k));
+
+/**
+ * With `format` (a key of FIELD_FORMATS) a refused character is dropped as typed and a warning
+ * says so right then, fading after a few seconds — as on ADD DEVICE. `error` is the field's
+ * message from SUBMIT, shown in red until the value is put right.
+ */
+function TextField({ label, value, onChange, disabled, placeholder, maxLength = 150, format, error, required }) {
   const [typed, setTyped] = useState("");
   const timer = useRef(null);
   useEffect(() => () => clearTimeout(timer.current), []);
   const handleChange = (e) => {
-    const warning = format ? typedWarning(format, e.target.value) : null;
+    const warning = format ? typedWarning(format, e.target.value, label) : null;
     clearTimeout(timer.current);
     setTyped(warning ?? "");
     if (warning) timer.current = setTimeout(() => setTyped(""), 3000);
@@ -189,7 +225,9 @@ function TextField({ label, value, onChange, disabled, placeholder, maxLength = 
   };
   return (
     <div>
-      <label className={LABEL_CLS}>{label}</label>
+      <label className={LABEL_CLS}>
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
       <input
         type="text"
         value={value}
@@ -197,22 +235,35 @@ function TextField({ label, value, onChange, disabled, placeholder, maxLength = 
         disabled={disabled}
         placeholder={placeholder}
         maxLength={maxLength}
-        className={`${FIELD_CLS}${typed ? " border-red-500!" : ""}`}
+        data-field-error={error ? "" : undefined}
+        className={`${FIELD_CLS}${typed || error ? " border-red-500!" : ""}`}
       />
-      {typed && (
+      {(typed || error) && (
         <p role="alert" className="mt-1 text-[11px] font-semibold text-red-600 normal-case">
-          {typed}
+          {typed || error}
         </p>
       )}
     </div>
   );
 }
 
+/** A red message under a field, marked so SUBMIT can scroll to the first one. */
+function FieldError({ msg }) {
+  if (!msg) return null;
+  return (
+    <p role="alert" data-field-error="" className="mt-1 text-[11px] font-semibold text-red-600 normal-case">
+      {msg}
+    </p>
+  );
+}
+
 /** A searchable dropdown over one master's values. See _AddDevice for the full reasoning. */
-function MasterSelect({ label, options, value, onChange, disabled, master }) {
+function MasterSelect({ label, options, value, onChange, disabled, master, required, error }) {
   return (
     <div>
-      <label className={LABEL_CLS}>{label}</label>
+      <label className={LABEL_CLS}>
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
       <Select
         options={options}
         value={options.find((o) => o.value === value) ?? null}
@@ -224,8 +275,9 @@ function MasterSelect({ label, options, value, onChange, disabled, master }) {
         menuPlacement="bottom"
         menuPortalTarget={typeof document !== "undefined" ? document.body : null}
         components={nativeSelectComponents}
-        styles={nativeSelectStyles}
+        styles={error ? redSelectStyles : nativeSelectStyles}
       />
+      <FieldError msg={error} />
       {!disabled && options.length === 0 && (
         <p className="mt-1 text-[11px] font-semibold text-amber-600">
           No {label.toLowerCase()} has been added. Add one in {master} first.
@@ -234,6 +286,15 @@ function MasterSelect({ label, options, value, onChange, disabled, master }) {
     </div>
   );
 }
+
+/** The shared dropdown look with a red border, for a dropdown SUBMIT found empty. */
+const redSelectStyles = {
+  ...nativeSelectStyles,
+  control: (base, state) => ({
+    ...(nativeSelectStyles.control ? nativeSelectStyles.control(base, state) : base),
+    borderColor: "#ef4444",
+  }),
+};
 
 export default function AddServer({
   barColor,
@@ -288,6 +349,12 @@ export default function AddServer({
   /** Names already on the register, so they can be shown as taken rather than offered. */
   const [takenNames, setTakenNames] = useState(new Set());
 
+  /** S/N already on the register: lower-cased S/N → { id, server_name }, so one is not used twice. */
+  const [takenSerials, setTakenSerials] = useState(new Map());
+
+  /** True after SUBMIT is pressed: from then on each field's red message follows what is typed. */
+  const [attempted, setAttempted] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -333,6 +400,12 @@ export default function AddServer({
         setTakenNames(
           new Set(list.map((r) => (r.server_name ?? "").trim().toLowerCase()).filter(Boolean))
         );
+        const serials = new Map();
+        list.forEach((r) => {
+          const sn = (r.serial_no ?? "").trim().toLowerCase();
+          if (sn && r.status !== -1) serials.set(sn, { id: r.id, server_name: r.server_name });
+        });
+        setTakenSerials(serials);
       })
       .catch(fail);
 
@@ -361,11 +434,12 @@ export default function AddServer({
     if (derivedStart) filled.warranty_start_date = derivedStart;
     setForm(filled);
     setError("");
+    setAttempted(false);
   }, [editing]);
 
-  // S/N keeps only the characters it may hold — see fieldFormats.
+  // Each typed field keeps only the characters its rule allows — see TYPED_FIELDS / fieldFormats.
   const set = (key) => (e) => {
-    const value = cleanField(key, e.target.value);
+    const value = cleanField(FORMAT_OF[key] ?? key, e.target.value);
     setForm((f) => ({ ...f, [key]: value }));
   };
 
@@ -537,22 +611,60 @@ export default function AddServer({
   const reset = () => {
     setForm(BLANK);
     setError("");
+    setAttempted(false);
   };
 
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    if (readOnly) return;
+  /**
+   * EVERY CHECK ON WHAT THE USER ENTERED, by field: { key: message }. Empty when all is right.
+   *
+   *   Mandatory      REQUIRED_FIELDS (from the register's SERVER sheet)
+   *   Typed fields   their rule (TYPED_FIELDS): allowed characters, and not only numbers/symbols
+   *   S/N            not already recorded against another server
+   *   Warranty       the last date after the start
+   */
+  const collectErrors = () => {
+    const out = {};
+    REQUIRED_FIELDS.forEach(([key, label]) => {
+      if (!String(form[key] ?? "").trim()) out[key] = `${label} is required.`;
+    });
 
-    if (!form.server_name.trim()) return setError("Server name is required.");
-    if (form.total_warranty_years !== "" && Number(form.total_warranty_years) < 0) {
-      return setError("Total warranty cannot be negative.");
+    TYPED_FIELDS.forEach(({ key, label, format }) => {
+      const msg = fieldFormatError(format, label, form[key]);
+      if (msg && !out[key]) out[key] = `${msg}.`;
+    });
+
+    const sn = String(form.serial_no ?? "").trim().toLowerCase();
+    const holder = sn ? takenSerials.get(sn) : null;
+    if (!out.serial_no && holder && holder.id !== targetId) {
+      out.serial_no = `S/N "${form.serial_no.trim()}" is already recorded for server ${holder.server_name}.`;
     }
+
     if (
       form.warranty_start_date &&
       form.last_date_of_warranty &&
       form.last_date_of_warranty <= form.warranty_start_date
     ) {
-      return setError("Last Date Of Warranty must be after the Warranty Start Date.");
+      out.last_date_of_warranty = "Last Date Of Warranty must be after the Warranty Start Date.";
+    }
+    return out;
+  };
+
+  // Shown only once SUBMIT has been pressed, then kept in step with every change.
+  const errors = attempted ? collectErrors() : {};
+
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    if (readOnly) return;
+
+    setAttempted(true);
+    const found = collectErrors();
+    if (Object.keys(found).length) {
+      setError("");
+      // Bring the first wrong field into view.
+      setTimeout(() => {
+        document.querySelector("[data-field-error]")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 0);
+      return;
     }
 
     /*
@@ -572,8 +684,13 @@ export default function AddServer({
     setSaving(true);
     setError("");
     try {
+      // Typed values saved without stray spaces at either end.
+      const trimmed = Object.fromEntries(
+        TYPED_FIELDS.map(({ key }) => [key, String(form[key] ?? "").trim()])
+      );
       const body = {
         ...form,
+        ...trimmed,
         server_name: form.server_name.trim(),
         // Empty date and number boxes are null, not "" — the columns are DATE and DECIMAL.
         warranty_start_date: form.warranty_start_date || null,
@@ -598,7 +715,9 @@ export default function AddServer({
       }
 
       // Awaited, so the confirmation is seen before the list replaces the form.
-      await savedToast(targetId ? "Server updated successfully" : "Server added successfully");
+      await savedToast(targetId ? "Server updated successfully" : "Server added successfully", {
+        "Server Name": res?.response?.server_name || form.server_name.trim(),
+      });
       reset();
       if (onSaved) onSaved();
     } catch {
@@ -629,10 +748,14 @@ export default function AddServer({
 
       <form
         onSubmit={onSubmit}
-        className="bg-white rounded-b-[3px] shadow-sm p-6"
+        className="bg-white rounded-b-[3px] shadow-sm p-4 sm:p-6"
         style={{ "--ams-disabled-bg": readOnly ? VIEW_BG : NOT_READY_BG }}
       >
         {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+        {/* Goes away by itself once every red field is put right. */}
+        {Object.keys(errors).length > 0 && (
+          <p className="mb-3 text-sm text-red-600">Please correct the fields marked in red.</p>
+        )}
         {loadError && <p className="mb-3 text-sm text-amber-600">{loadError}</p>}
 
         <Section title="Server Details">
@@ -658,6 +781,11 @@ export default function AddServer({
               components={nativeSelectComponents}
               styles={nativeSelectStyles}
             />
+            {errors.server_name && (
+              <p role="alert" data-field-error="" className="mt-1 text-[11px] font-semibold text-red-600">
+                {errors.server_name}
+              </p>
+            )}
             {!disabled && serverNameOptions.length === 0 && (
               <p className="mt-1 text-[11px] font-semibold text-amber-600">
                 No server has been added. Add one in Server Master first.
@@ -682,8 +810,11 @@ export default function AddServer({
             value={form.server_type}
             onChange={set("server_type")}
             disabled={disabled}
-            placeholder="e.g. Rack / Tower / Blade"
+            placeholder="e.g. HPE ProLiant DL380 Gen10"
             maxLength={255}
+            format="server_type"
+            error={errors.server_type}
+            required={IS_REQUIRED.has("server_type")}
           />
           <TextField
             label="S/N"
@@ -693,6 +824,7 @@ export default function AddServer({
             placeholder="e.g. SGH910WPLN"
             maxLength={100}
             format="serial_no"
+            error={errors.serial_no}
           />
         </Section>
 
@@ -739,30 +871,38 @@ export default function AddServer({
             onChange={setValue("os_name")}
             disabled={disabled}
             master="Operating System Master"
+            required
+            error={errors.os_name}
           />
           <TextField
             label="OS Service Pack"
             value={form.os_service_pack}
             onChange={set("os_service_pack")}
             disabled={disabled}
-            placeholder="Service pack"
+            placeholder="e.g. SP1"
             maxLength={100}
+            format="server_os_sp"
+            error={errors.os_service_pack}
           />
           <TextField
             label="Other Software 1"
             value={form.other_software_1}
             onChange={set("other_software_1")}
             disabled={disabled}
-            placeholder="Other software"
+            placeholder="e.g. ORACLE APPS R12 + DB"
             maxLength={255}
+            format="server_software"
+            error={errors.other_software_1}
           />
           <TextField
             label="Other Software 2"
             value={form.other_software_2}
             onChange={set("other_software_2")}
             disabled={disabled}
-            placeholder="Other software"
+            placeholder="e.g. SAP SERVER"
             maxLength={255}
+            format="server_software"
+            error={errors.other_software_2}
           />
         </Section>
 
@@ -774,9 +914,13 @@ export default function AddServer({
             onChange={setValue("ip_address")}
             disabled={disabled}
             master="IP Address Master"
+            required
+            error={errors.ip_address}
           />
           <div>
-            <label className={LABEL_CLS}>Plant</label>
+            <label className={LABEL_CLS}>
+              Plant <span className="text-red-500">*</span>
+            </label>
             <Select
               options={plantOptions}
               value={plantOptions.find((o) => o.value === form.plant) ?? null}
@@ -798,8 +942,9 @@ export default function AddServer({
               menuPlacement="bottom"
               menuPortalTarget={typeof document !== "undefined" ? document.body : null}
               components={nativeSelectComponents}
-              styles={nativeSelectStyles}
+              styles={errors.plant ? redSelectStyles : nativeSelectStyles}
             />
+            <FieldError msg={errors.plant} />
           </div>
           <MasterSelect
             label="Dept."
@@ -808,10 +953,14 @@ export default function AddServer({
             onChange={setValue("department")}
             disabled={disabled}
             master="Department Master"
+            required
+            error={errors.department}
           />
           {/* Location Master, narrowed to the chosen plant — the same list as ADD DEVICE. */}
           <div>
-            <label className={LABEL_CLS}>Location</label>
+            <label className={LABEL_CLS}>
+              Location <span className="text-red-500">*</span>
+            </label>
             <Select
               options={locationOptions}
               value={locationOptions.find((o) => o.value === form.location) ?? null}
@@ -823,8 +972,9 @@ export default function AddServer({
               menuPlacement="bottom"
               menuPortalTarget={typeof document !== "undefined" ? document.body : null}
               components={nativeSelectComponents}
-              styles={nativeSelectStyles}
+              styles={errors.location ? redSelectStyles : nativeSelectStyles}
             />
+            <FieldError msg={errors.location} />
             {!disabled && form.plant && locationOptions.length === 0 && (
               <p className="mt-1 text-[11px] font-semibold text-amber-600">
                 No location for plant {form.plant}. Add one in Location Master first.
@@ -835,11 +985,14 @@ export default function AddServer({
 
         <Section title="Warranty Details">
           <div>
-            <label className={LABEL_CLS}>Warranty Status</label>
+            <label className={LABEL_CLS}>
+              Warranty Status <span className="text-red-500">*</span>
+            </label>
             <SearchableSelect
               value={form.warranty_status}
               onChange={set("warranty_status")}
               disabled={disabled}
+              invalid={!!errors.warranty_status}
               className={SELECT_CLS}
             >
               <option value="">Select Warranty Status</option>
@@ -849,29 +1002,46 @@ export default function AddServer({
                 </option>
               ))}
             </SearchableSelect>
+            <FieldError msg={errors.warranty_status} />
           </div>
 
           <div>
-            <label className={LABEL_CLS}>Warranty Start Date</label>
+            <label className={LABEL_CLS}>
+              Warranty Start Date <span className="text-red-500">*</span>
+            </label>
             <input
               type="date"
               value={form.warranty_start_date}
               onChange={onWarrantyDateChange("warranty_start_date")}
               disabled={disabled}
-              className={FIELD_CLS}
+              data-field-error={errors.warranty_start_date ? "" : undefined}
+              className={`${FIELD_CLS}${errors.warranty_start_date ? " border-red-500!" : ""}`}
             />
+            {errors.warranty_start_date && (
+              <p role="alert" className="mt-1 text-[11px] font-semibold text-red-600">
+                {errors.warranty_start_date}
+              </p>
+            )}
           </div>
 
           <div>
-            <label className={LABEL_CLS}>Last Date Of Warranty</label>
+            <label className={LABEL_CLS}>
+              Last Date Of Warranty <span className="text-red-500">*</span>
+            </label>
             <input
               type="date"
               value={form.last_date_of_warranty}
               min={form.warranty_start_date || undefined}
               onChange={onWarrantyDateChange("last_date_of_warranty")}
               disabled={disabled}
-              className={FIELD_CLS}
+              data-field-error={errors.last_date_of_warranty ? "" : undefined}
+              className={`${FIELD_CLS}${errors.last_date_of_warranty ? " border-red-500!" : ""}`}
             />
+            {errors.last_date_of_warranty && (
+              <p role="alert" className="mt-1 text-[11px] font-semibold text-red-600">
+                {errors.last_date_of_warranty}
+              </p>
+            )}
           </div>
 
           {/* Worked out from the two dates — never typed (read-only, in the calculated blue). */}
@@ -898,6 +1068,8 @@ export default function AddServer({
             disabled={disabled}
             placeholder="Optional note"
             maxLength={255}
+            format="server_description"
+            error={errors.description}
           />
           {/* No Status (Active / Inactive) on the form: every server is saved active. */}
         </Section>
@@ -908,7 +1080,7 @@ export default function AddServer({
           */}
         {editing?.id && <UserLogTable rows={changeLog} emptyText="No changes recorded for this server yet." />}
 
-        <div className="mt-6 flex justify-center gap-2">
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
           {readOnly ? (
             <>
               {/*

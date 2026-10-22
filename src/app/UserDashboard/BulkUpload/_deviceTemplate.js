@@ -389,7 +389,8 @@ export function buildDeviceWorkbook(ExcelJS, d) {
     if (off.length) parts.push(`NOT(${isOneOf(off)})`);
     if (fmt) parts.push(onlyChars(`${col}${FIRST}`, fmt.chars));
     const messages = [];
-    if (fmt) messages.push(`${fmt.hint} — e.g. ${fmt.sample}.`);
+    // "PO No. needs numbers only — e.g. 410000074." — Excel's own error box, naming the column.
+    if (fmt) messages.push(`${c.header} needs ${fmt.hint.toLowerCase()} — e.g. ${fmt.sample}.`);
     if (off.length) messages.push(notUsedNote(c.header, off));
     ws.dataValidations.add(`${col}${FIRST}:${col}${LAST}`, {
       type: "custom",
@@ -446,6 +447,51 @@ export function buildDeviceWorkbook(ExcelJS, d) {
     };
     age.alignment = { horizontal: "right" };
   }
+
+  /*
+   * THE AUTO-GENERATED COLUMNS CANNOT BE TYPED IN — and say WHY, in their own words (Excel's
+   * "protected cell" box cannot be reworded, so a rule refuses the typing instead). Shaded GREY,
+   * the only colour on the sheet, so they read as filled in by the sheet. Clicking one shows
+   * the same note as a tip.
+   */
+  const AUTO_NOTES = {
+    reference_no: "Reference No is auto-generated from the Device Type, Model and Device Name — it cannot be typed.",
+    company: "Company fills in from the Plant you pick — it cannot be typed.",
+    total_warranty_years: "Total Warranty is worked out from the Warranty Start and End Date — it cannot be typed.",
+    age: "Age is worked out from the Warranty Start Date — it cannot be typed.",
+  };
+  const GREY = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9D9D9" } };
+  columns.forEach((c) => {
+    const note = AUTO_NOTES[c.key];
+    if (!note) return;
+    const col = letter(c.key);
+    ws.dataValidations.add(`${col}${FIRST}:${col}${LAST}`, {
+      type: "custom",
+      allowBlank: false,
+      // Anything typed has a length — refused. The sheet's own formula result is never checked.
+      formulae: [`LEN(${col}${FIRST})=0`],
+      showErrorMessage: true,
+      errorStyle: "stop",
+      errorTitle: "Auto-generated",
+      error: note,
+      showInputMessage: true,
+      promptTitle: "Auto-generated",
+      prompt: note,
+    });
+    for (let r = FIRST; r <= LAST; r++) ws.getCell(`${col}${r}`).fill = GREY;
+  });
+
+  // THE HEADINGS cannot be renamed either — the upload finds each column by its heading.
+  const lastCol = colRef(columns.length);
+  ws.dataValidations.add(`A1:${lastCol}1`, {
+    type: "custom",
+    allowBlank: false,
+    formulae: ["LEN(A1)=0"],
+    showErrorMessage: true,
+    errorStyle: "stop",
+    errorTitle: "Column heading",
+    error: "Column headings cannot be changed — the upload reads them.",
+  });
 
   // No Instructions sheet: the workbook is the Device sheet alone (and its hidden lists).
   return wb;

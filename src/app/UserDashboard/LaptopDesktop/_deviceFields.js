@@ -22,8 +22,13 @@ export const FIELDS_BY_DEVICE = {
     "device_status",
   ]),
   tablet: new Set([
+    // Device Details, as on the register's TABLET sheet: PO No., Asset Code, Asset S/N.
+    "po_no",
+    "asset_code",
+    "asset_sn",
     // Allocation: where the tablet is (Company shows beside Plant, from the plant chosen).
     "plant",
+    "ip_address",
     "department",
     "location",
     "processor",
@@ -39,6 +44,19 @@ export const FIELDS_BY_DEVICE = {
     "device_status",
   ]),
 };
+
+/**
+ * Fields a type SHOWS but does not require. Every shown field is otherwise mandatory. A tablet
+ * has the TABLET sheet's PO No., IP Address, Asset Code and Asset S/N on its form, all OPTIONAL:
+ * a tablet can be added without any of them, and saved with whichever are filled in.
+ */
+export const OPTIONAL_BY_DEVICE = {
+  tablet: new Set(["po_no", "ip_address", "asset_code", "asset_sn"]),
+};
+
+/** Whether `field` may be left empty for this device type (its name, e.g. "tablet"). */
+export const isOptionalFor = (deviceName, field) =>
+  Boolean(OPTIONAL_BY_DEVICE[String(deviceName ?? "").toLowerCase()]?.has(field));
 
 /**
  * The rules for one device type (its name, e.g. "laptop"), exactly as ADD DEVICE applies them:
@@ -83,9 +101,9 @@ export function deviceFieldRules(deviceName) {
     ["warranty_start_date", "Warranty Start Date", true],
     ["last_date_of_warranty", "Warranty End Date", true],
     ["total_warranty_years", "Total Warranty (In Years)", true],
-    ["description", "Description", shows("description")],
+    // Description is OPTIONAL for every device type — on the form and in Bulk Upload.
   ]
-    .filter(([, , needed]) => needed)
+    .filter(([key, , needed]) => needed && !isOptionalFor(name, key))
     .map(([key, label]) => ({ key, label }));
 
   /*

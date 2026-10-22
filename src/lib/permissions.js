@@ -1,18 +1,4 @@
-/**
- * Role and permission model for the Asset Management System.
- *
- * Three roles, in descending order of authority:
- *
- *   ADMIN  - full control. Manages the asset register, allocations, maintenance,
- *            masters and users.
- *   USER   - an employee who holds assets. Sees only their own assets, and can raise
- *            requests and service tickets.
- *   VIEWER - read-only oversight. Sees everything ADMIN sees, but changes nothing.
- *
- * VIEWER deliberately outranks USER in visibility while holding no write permission at
- * all; the two are not on a simple ladder, which is why route access is decided by
- * PERMISSIONS rather than by comparing hierarchy numbers alone.
- */
+
 
 export const ROLES = {
   ADMIN: "ADMIN",
@@ -35,7 +21,6 @@ export const ROLE_LIST = [
 export const ROLE_OPTIONS = ROLE_LIST.map((r) => ({ value: r.code, label: r.label }));
 
 export const PERMISSIONS = {
-  // Asset register
   VIEW_ASSETS: "view_assets",
   CREATE_ASSETS: "create_assets",
   EDIT_ASSETS: "edit_assets",
@@ -152,7 +137,6 @@ export function getUserRole(user) {
   return priority.find((r) => roles.includes(r)) ?? ROLES.USER;
 }
 
-/** Every authority string attached to the user, uppercased. */
 export function getUserAuthorities(user) {
   if (!user) return [];
   if (Array.isArray(user.authorities)) {
@@ -210,8 +194,8 @@ export function dashboardForRole(role) {
      */
     case ROLES.ADMIN:
       return "/AdminDashboard/Setting";
+    // A viewer looks at the user screens, read-only — there is no separate viewer dashboard.
     case ROLES.VIEWER:
-      return "/ViewerDashboard";
     case ROLES.USER:
     default:
       return "/UserDashboard";
