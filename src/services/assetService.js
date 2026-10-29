@@ -8,24 +8,16 @@ import { apiGet, apiPost, apiDelete } from "@/lib/api";
  * there is no list of supported types on either side and nothing to filter the device
  * dropdown against.
  *
- * Not to be confused with desktopService.js / laptopService.js / printerService.js, which are
- * the older per-type lists and are not used by any screen.
- *
  * delete does not remove the row; the backend sets status = -1.
  */
 /**
- * The machines of one device type.
+ * The machines of one device type — every device added through ADD DEVICE or BULK UPLOAD.
  *
- * By default only the ones ADDED through ADD DEVICE — that is what LIST DEVICE shows. The 656
- * rows carried over from the asset workbook are bare names, and listing them alongside real
- * entries would bury what was actually filled in.
- *
- * includeImported brings those back, and is what the ADD DEVICE form asks for: its Model and
- * Device Name dropdowns are the whole catalogue of machines the company owns, and it has to
- * see every name to know which are already taken.
+ * There is no "include imported" switch any more: the bare names carried over from the old
+ * asset workbook are gone from this table (the backend dropped its `source` column), so every
+ * row here is a real entry.
  */
-export const getAssetList = (deviceId, includeImported = false) =>
-  apiGet("asset/list", { device_id: deviceId, include_imported: includeImported });
+export const getAssetList = (deviceId) => apiGet("asset/list", { device_id: deviceId });
 export const saveAsset = (data) => apiPost("asset/save", data);
 export const updateAsset = (data) => apiPost("asset/update", data);
 export const deleteAsset = (id) => apiDelete("asset/delete", { id });

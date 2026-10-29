@@ -1,4 +1,6 @@
 import { API_BASE_URL } from "@/config/api";
+import { exitUrl } from "@/config/auth";
+import { MOCK_AUTH_ENABLED } from "@/lib/mockAuth";
 import { USER_KEY } from "@/lib/session";
 
 function ensureTrailingSlash(url) {
@@ -15,25 +17,49 @@ function absolute(endpoint) {
 }
 
 /*
- * WHO IS ASKING. Every request carries the signed-in employee code in X-Emp-Code, so the
- * backend can store it as reg_by on whatever is added — any master, device, server, software,
- * licence or bulk upload — without each form having to send it.
+ * WHO IS ASKING. Every request carries the sign-in token from /login as
+ * "Authorization: Bearer <token>". The backend refuses every API but /login and /logout without
+ * it (HTTP 401), and reads the signed-in employee from it — e.g. reg_by on whatever is added.
  */
-function currentEmpCode() {
+function currentToken() {
   try {
     const u = JSON.parse(localStorage.getItem(USER_KEY) || "null");
-    return String(u?.emp_code ?? u?.user_id ?? "");
+    return u?.token ? String(u.token) : "";
   } catch {
     return "";
   }
 }
 
 function userHeader() {
-  const code = typeof window !== "undefined" ? currentEmpCode() : "";
-  return code ? { "X-Emp-Code": code } : {};
+  const token = typeof window !== "undefined" ? currentToken() : "";
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 export const getAuthHeaders = () => ({ "Content-Type": "application/json", ...userHeader() });
+
+/*
+ * SIGNED OUT BY THE SERVER. A 401 means the token is missing, expired or no longer valid
+ * (e.g. AMS access was taken away). The session is ended and the login page opened — the same
+ * as signing out — rather than leaving every screen failing one call at a time. Removing the
+ * stored user also signs out every other open tab (AuthContext listens for that).
+ *
+ * Not with the demo accounts (NEXT_PUBLIC_MOCK_AUTH): they have no token, so every call would
+ * send them straight back to the login page.
+ */
+let signingOut = false;
+function checkSignedIn(res) {
+  if (res.status !== 401 || MOCK_AUTH_ENABLED || typeof window === "undefined") return;
+  if (!signingOut) {
+    signingOut = true;
+    try {
+      localStorage.removeItem(USER_KEY);
+    } catch {
+      /* storage unavailable — the page change below still ends the session */
+    }
+    window.location.href = exitUrl();
+  }
+  throw new Error("Your session has expired. Please log in again.");
+}
 
 /*
  * ONE REQUEST PER API AT A TIME. When two parts of a screen ask for the same GET together (the
@@ -86,6 +112,7 @@ export async function apiGet(endpoint, params = {}) {
   if (!pending) {
     pending = fetch(key, { method: "GET", headers: getAuthHeaders() })
       .then((res) => {
+        checkSignedIn(res);
         if (!res.ok) throw new Error("API Error: " + res.status);
         return res.text();
       })
@@ -114,6 +141,7 @@ export async function apiPost(endpoint, data, isFormData = false) {
     body: isFormData ? data : JSON.stringify(data),
   });
   clearApiCache();
+  checkSignedIn(res);
   if (!res.ok) throw new Error("API Error: " + res.status);
   return res.json();
 }
@@ -126,6 +154,7 @@ export async function apiPut(endpoint, data) {
     body: JSON.stringify(data),
   });
   clearApiCache();
+  checkSignedIn(res);
   if (!res.ok) throw new Error("API Error: " + res.status);
   return res.json();
 }
@@ -138,6 +167,7 @@ export async function apiDelete(endpoint, params = {}) {
   });
   const res = await fetch(url.toString(), { method: "DELETE", headers: getAuthHeaders() });
   clearApiCache();
+  checkSignedIn(res);
   if (!res.ok) throw new Error("API Error: " + res.status);
   return res.json();
 }

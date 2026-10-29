@@ -54,6 +54,7 @@ const DEVICE_STATUS_VALUES = ["In Use", "In Spare"];
  */
 const ACTION_STATUS_VALUES = [
   "Assigned",
+  "Open",
   "User Left",
   "Asset Transferred",
   "Laptop Replaced",
@@ -64,9 +65,17 @@ const ACTION_STATUS_VALUES = [
 /** Why a holder gave the machine up — every status except "Assigned". */
 const RELEASE_REASONS = ACTION_STATUS_VALUES.filter((s) => s !== "Assigned");
 
+/*
+ * RELEASE REASON "Open" — back to stock, nobody new. The only reason that does not hand the
+ * device straight to someone else: Assign To New Employee is hidden, only the holder's row is
+ * closed (End Date + status OPEN in the History table), and the device becomes Open again.
+ */
+const RETURN_TO_STOCK = "Open";
+
 /* One colour per Action History status, used in the dropdown and in the history table. */
 const ACTION_STATUS_COLORS = {
   "Assigned": "bg-green-100 text-green-800 border-green-300",
+  "Open": "bg-sky-100 text-sky-800 border-sky-300",
   "User Left": "bg-red-100 text-red-800 border-red-300",
   "Asset Transferred": "bg-blue-100 text-blue-800 border-blue-300",
   "Laptop Replaced": "bg-amber-100 text-amber-800 border-amber-300",
@@ -540,8 +549,7 @@ export default function AddDevice({
       return undefined;
     }
     let cancelled = false;
-    // The whole catalogue, workbook rows included — these feed the dropdowns.
-    getAssetList(form.device_id, true)
+    getAssetList(form.device_id)
       .then((res) => {
         if (cancelled) return;
         setAssets(
@@ -646,6 +654,8 @@ export default function AddDevice({
   const setReleaseField = (key) => (e) => {
     const value = e.target.value;
     setRelease((r) => ({ ...r, [key]: value }));
+    // "Open" hides Assign To New Employee — nothing typed there may be saved behind the user's back.
+    if (key === "action_status" && value === RETURN_TO_STOCK) setAssign(BLANK_ASSIGN);
   };
 
   const setAssignField = (key) => (e) => {
@@ -793,13 +803,10 @@ export default function AddDevice({
   };
 
 
+  // Every name already in the register for this type. (No `source` filter: every row the list
+  // returns is a real entry now — keeping one would hide them all once `source` is gone.)
   const takenNames = useMemo(
-    () =>
-      new Set(
-        assets
-          .filter((a) => (a.source ?? "").toUpperCase() === "FORM")
-          .map((a) => (a.name ?? "").trim().toLowerCase())
-      ),
+    () => new Set(assets.map((a) => (a.name ?? "").trim().toLowerCase())),
     [assets]
   );
 
@@ -1057,30 +1064,43 @@ export default function AddDevice({
    * Sorted by start date, newest first, so the current holder is at the top; two starts on
    * the same day put the one recorded later first, and entries with no date fall to the bottom.
    * End Date "Present" means they still hold it.
+   *
+   * A RELEASE BEING ENTERED shows on the current holder's row straight away: once a Release
+   * Date is typed, that row reads that End Date (and the Reason as its status, once chosen)
+   * instead of "Present" / Assigned — what UPDATE will save, marked "unsaved" until it is.
    */
   const timeline = useMemo(() => {
     const rows = history
       .filter((h) => h.assigned_emp_code || h.assigned_emp_name)
-      .map((h) => ({
-        entryId: h.id,
-        role: "assigned",
-        code: h.assigned_emp_code ?? "",
-        name: h.assigned_emp_name ?? "",
-        // Where the device was when this entry was written — saved on the row, not the device's plant now.
-        plant: h.plant ?? "",
-        location: h.location ?? "",
-        start: h.start_date ?? "",
-        end: h.end_date ?? "",
-        actionStatus: h.action_status ?? "",
-        recorded: h.create_date ?? "",
-      }));
+      .map((h) => {
+        const releasingThis =
+          !readOnly && currentHolder && h.id === currentHolder.id && release.end_date;
+        return {
+          entryId: h.id,
+          role: "assigned",
+          code: h.assigned_emp_code ?? "",
+          name: h.assigned_emp_name ?? "",
+          // Where the device was when this entry was written — saved on the row, not the device's plant now.
+          plant: h.plant ?? "",
+          location: h.location ?? "",
+          start: h.start_date ?? "",
+          end: releasingThis ? release.end_date : h.end_date ?? "",
+          actionStatus: releasingThis
+            ? release.action_status || h.action_status || ""
+            : h.action_status ?? "",
+          recorded: h.create_date ?? "",
+          // Who assigned it, "code - name" — blank on entries saved before this was kept.
+          assignedBy: [h.action_by_emp_code, h.action_by_emp_name].filter(Boolean).join(" - "),
+          pending: Boolean(releasingThis),
+        };
+      });
 
     return rows.sort((a, b) => {
       if (!a.start) return 1;
       if (!b.start) return -1;
       return b.start.localeCompare(a.start) || (b.entryId ?? 0) - (a.entryId ?? 0);
     });
-  }, [history]);
+  }, [history, readOnly, currentHolder, release.end_date, release.action_status]);
 
   // The workbook records a charger for laptops only; every other device has none to track.
   const isLaptop = deviceName.toLowerCase() === "laptop";
@@ -1166,12 +1186,14 @@ export default function AddDevice({
     hasActionHistory &&
     Boolean(currentHolder) &&
     (filled(release) || Boolean(assign.assigned_emp_code));
+  // Released with the reason "Open": back to stock, nobody new — see RETURN_TO_STOCK.
+  const returningToStock = releasing && release.action_status === RETURN_TO_STOCK;
   /*
    * ASSIGN IS OPTIONAL — a device can be added (or saved) with nobody assigned yet. It becomes
    * required only once something in it is filled in, or when the current holder is released
-   * (no release on its own: the device then goes straight to someone new).
+   * for any reason except "Open" (then the device goes straight to someone new).
    */
-  const assigning = hasActionHistory && (filled(assign) || releasing);
+  const assigning = hasActionHistory && !returningToStock && (filled(assign) || releasing);
 
   /*
    * EVERY FIELD IS MANDATORY EXCEPT CLASSIFICATION AND DESCRIPTION — but only the ones on screen. A printer
@@ -1380,6 +1402,8 @@ export default function AddDevice({
         start_date: assign.start_date,
         end_date: null,
         action_status: "Assigned",
+        // Recorded as ASSIGNED BY on the new row.
+        ...changedBy,
       });
       if (res?.status_code !== 200) {
         await warnAlert(
@@ -2252,6 +2276,9 @@ export default function AddDevice({
                 </div>
               )}
 
+              {/* Hidden when the holder goes back to stock ("Open"): nobody new gets it. The
+                  History table below already shows the release on their row. */}
+              {!returningToStock && (
               <div className="p-4">
                 <div className="mb-3 flex flex-wrap items-center gap-2">
                   <p className="text-[12px] font-bold uppercase tracking-wide text-gray-700">
@@ -2289,6 +2316,7 @@ export default function AddDevice({
                   </div>
                 </div>
               </div>
+              )}
             </div>
           )}
               {readOnly && timeline.length === 0 && (
@@ -2321,13 +2349,18 @@ export default function AddDevice({
                           <th className="px-3 py-2 font-semibold">Location</th>
                           <th className="whitespace-nowrap px-3 py-2 font-semibold">Start Date</th>
                           <th className="whitespace-nowrap px-3 py-2 font-semibold">End Date</th>
+                          <th className="px-3 py-2 font-semibold">Assigned By</th>
                           <th className="whitespace-nowrap px-3 py-2 font-semibold">Recorded</th>
                           <th className="px-3 py-2 font-semibold">Status</th>
                         </tr>
                       </thead>
                       <tbody>
                         {timeline.map((r, i) => (
-                          <tr key={`${r.entryId}-${r.role}-${i}`} className="border-b border-gray-100">
+                          <tr
+                            key={`${r.entryId}-${r.role}-${i}`}
+                            // A release typed in but not saved yet: shaded so it reads as a preview.
+                            className={`border-b border-gray-100 ${r.pending ? "bg-amber-50" : ""}`}
+                          >
                             <td className="whitespace-nowrap px-3 py-2 text-gray-600">{i + 1}</td>
                             <td className="px-3 py-2 text-gray-700">
                               {[r.code, r.name].filter(Boolean).join(" - ") || "—"}
@@ -2341,11 +2374,17 @@ export default function AddDevice({
                               {/* Blank means they still hold it — worth saying, not a dash. */}
                               {fmtDate(r.end) || (r.start ? "Present" : "—")}
                             </td>
+                            <td className="px-3 py-2 text-gray-600">{r.assignedBy || "—"}</td>
                             <td className="whitespace-nowrap px-3 py-2 text-gray-500">
                               {fmtDate(r.recorded) || "—"}
                             </td>
                             <td className="px-3 py-2 text-gray-700">
                               <ActionStatusBadge status={r.actionStatus} />
+                              {r.pending && (
+                                <span className="ml-1 text-[10px] font-semibold uppercase text-amber-700">
+                                  (unsaved)
+                                </span>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -2360,14 +2399,12 @@ export default function AddDevice({
         {/*
           * USER LOG, right below Action History, whenever an existing device is open: every field
           * earlier edits changed, before → after, with who saved it and when, newest first.
-          * Written by the backend on UPDATE (ams_asset_user_log).
+          * Written by the backend on UPDATE (ams_asset_user_log). Not shown at all until there is
+          * a change to list.
           */}
-        {editing?.id && (
+        {editing?.id && changeLog.length > 0 && (
           <Section title="User Log">
             <div className="md:col-span-4">
-              {changeLog.length === 0 ? (
-                <p className="text-[12px] text-gray-500">No changes recorded for this device yet.</p>
-              ) : (
                 <div className="overflow-x-auto rounded-[3px] border">
                   <table
                     className="w-full border-collapse text-[12px]
@@ -2403,7 +2440,6 @@ export default function AddDevice({
                     </tbody>
                   </table>
                 </div>
-              )}
             </div>
           </Section>
         )}
