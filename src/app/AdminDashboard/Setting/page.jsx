@@ -5,7 +5,7 @@ import PageTitle from "@/components/ui/common/PageTitle";
 import DashboardCard from "@/components/ui/common/DashboardCard";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { PERMISSIONS } from "@/lib/permissions";
-import { MASTERS } from "./_components/masterRegistry";
+import { VISIBLE_MASTERS } from "./_components/masterRegistry";
 
 /**
  * SETTING — the way in to every master.
@@ -31,7 +31,7 @@ export default function Setting() {
         <PageTitle title="SETTING" showBack={false} />
 
         <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-          {MASTERS.map((master) => (
+          {VISIBLE_MASTERS.map((master) => (
             <DashboardCard
               key={master.key}
               title={master.title}

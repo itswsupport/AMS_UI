@@ -9,6 +9,7 @@ import { getDepartmentList } from "@/services/masterService";
  *
  * READ-ONLY. The rows come straight from db_all_master.plant_dept_mst, a shared master that
  * is maintained outside AMS — so there is no ADD, no edit and no delete here, only the list.
+ * Department names only, each listed once.
  */
 export default function CategoryMasterPanel({ barColor }) {
   const [rows, setRows] = useState([]);
@@ -17,9 +18,12 @@ export default function CategoryMasterPanel({ barColor }) {
   useEffect(() => {
     getDepartmentList()
       // BaseResponseBO always answers HTTP 200; status_code in the body is the real outcome.
-      .then((res) =>
-        setRows(res?.status_code === 200 && Array.isArray(res.response) ? res.response : [])
-      )
+      .then((res) => {
+        const list = res?.status_code === 200 && Array.isArray(res.response) ? res.response : [];
+        // plant_dept_mst repeats a department for every plant, so each name is listed once.
+        const names = [...new Set(list.map((r) => r.department?.trim()).filter(Boolean))].sort();
+        setRows(names.map((department) => ({ department })));
+      })
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
   }, []);
@@ -27,24 +31,7 @@ export default function CategoryMasterPanel({ barColor }) {
   const columns = [
     // No key: DataTable numbers a "SR. NO" column from the row's position.
     { label: "SR. NO", width: 80 },
-    // Company -> plant -> department, the way plant_dept_mst is organised.
-    {
-      key: "company_name",
-      label: "COMPANY",
-      render: (row) => <span>{row.company_name || "-"}</span>,
-    },
-    {
-      key: "plant_code",
-      label: "PLANT CODE",
-      render: (row) => <span>{row.plant_code || "-"}</span>,
-    },
-    { key: "plant_name", label: "PLANT NAME" },
     { key: "department", label: "DEPARTMENT" },
-    {
-      key: "dept_short_name",
-      label: "DEPT SHORT NAME",
-      render: (row) => <span>{row.dept_short_name || "-"}</span>,
-    },
   ];
 
   return (

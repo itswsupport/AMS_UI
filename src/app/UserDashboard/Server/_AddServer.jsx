@@ -172,10 +172,7 @@ function Section({ title, children }) {
   );
 }
 
-/**
- * THE TYPED FIELDS and the rule each is checked with (lib/fieldFormats) — the same rules Bulk
- * Upload and the Excel template use for these columns.
- */
+
 const TYPED_FIELDS = [
   { key: "server_type", label: "Type", format: "server_type" },
   { key: "serial_no", label: "S/N", format: "serial_no" },

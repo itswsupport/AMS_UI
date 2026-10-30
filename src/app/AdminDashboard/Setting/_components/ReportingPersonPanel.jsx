@@ -7,7 +7,7 @@ import Swal from "sweetalert2";
 import DataTable from "@/components/ui/common/DataTable";
 import Modal from "@/components/ui/common/Modal";
 import { nativeSelectStyles, nativeSelectComponents } from "@/components/masters/nativeLikeSelect";
-import { ROLE_OPTIONS, ROLES, parseRoles, joinRoles, formatRoles, rolesProblem } from "@/lib/permissions";
+import { ROLES, parseRoles, joinRoles, formatRoles, rolesProblem } from "@/lib/permissions";
 import { confirmDelete, deletedToast, confirmMasterUpdate, savedToast } from "@/lib/confirmDelete";
 /*
  * This screen's own writes are in reportingPersonService; the dropdown lists are read from
@@ -15,6 +15,7 @@ import { confirmDelete, deletedToast, confirmMasterUpdate, savedToast } from "@/
  */
 import { getDepartmentList, getEmployeeList } from "@/services/masterService";
 import { getDeviceList } from "@/services/deviceService";
+import { getRoleList } from "@/services/roleService";
 import {
   getReportingPersonList,
   saveReportingPerson,
@@ -33,8 +34,9 @@ import SearchableSelect from "@/components/ui/common/SearchableSelect";
  *                     ams_login_access.device_ids. A USER then adds and sees only these
  *                     device types, only in this plant.
  *   Employee          db_all_master.emp_details   (851 active — searchable, not a dropdown)
- *   Role              ROLE_OPTIONS in @/lib/permissions, so this screen cannot invent a
- *                     role the rest of the app does not understand
+ *   Role              db_asset.ams_role_master (Role Master) — its Active roles, one or several,
+ *                     saved by id in ams_login_access.role_id ("1,4"). Each role's access type
+ *                     (Admin / User / Viewer) goes into ams_login_access.role for login.
  *
  * SAVING ALSO GRANTS LOGIN ACCESS. The backend writes the chosen role into
  * db_asset.ams_login_access for that employee, inserting a row if they had none. Without
@@ -153,6 +155,8 @@ export default function ReportingPersonPanel({ barColor }) {
   const [companies, setCompanies] = useState([]);
   const [deviceTypes, setDeviceTypes] = useState([]);
   const [employees, setEmployees] = useState([]);
+  // Role Master rows; null until loaded (or if it could not be), when the built-in list is used.
+  const [roleRows, setRoleRows] = useState(null);
   const [rows, setRows] = useState([]);
   const [loadingRows, setLoadingRows] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -164,7 +168,8 @@ export default function ReportingPersonPanel({ barColor }) {
   const [deviceIds, setDeviceIds] = useState([]);
   const [empCode, setEmpCode] = useState("");
   // One role or several (Admin + User) — saved as "ADMIN,USER". Viewer is never combined.
-  const [roles, setRoles] = useState([]);
+  // Role Master ids, as strings — one or several ("1,4"). Viewer-type roles stand alone.
+  const [roleIds, setRoleIds] = useState([]);
   const [description, setDescription] = useState("");
   // 1 = active, 0 = inactive. -1 (deleted) is never set from this form.
   const [status, setStatus] = useState(1);
@@ -208,6 +213,12 @@ export default function ReportingPersonPanel({ barColor }) {
       .catch(() => setLoadError("Could not reach the server."));
   }, []);
 
+  useEffect(() => {
+    getRoleList()
+      .then((res) => setRoleRows(unwrap(res)))
+      .catch(() => setRoleRows(null));
+  }, []);
+
   /*
    * plant_dept_mst has one row per department, so a company repeats once per department and
    * a plant once per department too — both are de-duplicated here. Rows whose plant has no
@@ -241,6 +252,37 @@ export default function ReportingPersonPanel({ barColor }) {
   });
 
   /*
+   * ROLE — every role in Role Master, picked BY ID and saved as role_id ("1,4"). Each role has
+   * an access type (Admin / User / Viewer), and `roles` below is those access types — what the
+   * rules here and the backend's `role` column work with ("ADMIN,USER").
+   *
+   * Only Active roles are offered. One the person being edited already holds stays in the list
+   * even if inactive, so opening their entry does not silently drop it.
+   */
+  const roleById = Object.fromEntries((roleRows ?? []).map((r) => [String(r.id), r]));
+  const splitIds = (v) => String(v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  /** A row's roles as ids — from role_id, or (an older row) its role codes' built-in roles. */
+  const roleIdsOf = (row) =>
+    row?.role_id
+      ? splitIds(row.role_id)
+      : parseRoles(row?.role)
+          .map((code) => (roleRows ?? []).find((r) => r.role_code === code)?.id)
+          .filter(Boolean)
+          .map(String);
+  const idsText = (ids) => ids.map((id) => roleById[id]?.role_name ?? id).join(", ");
+  /** A row's roles by name ("Admin, IT Support"); its access types if Role Master is not loaded. */
+  const rowRoleText = (row) => idsText(roleIdsOf(row)) || formatRoles(row?.role);
+  /** Access types by name: "Admin, User". */
+  const roleText = (value) => formatRoles(value);
+  const heldNow = editingId ? roleIdsOf(rows.find((r) => r.id === editingId)) : [];
+  const roleOptions = (roleRows ?? [])
+    .filter((r) => r.status === 1 || heldNow.includes(String(r.id)))
+    .map((r) => ({ value: String(r.id), label: r.role_name, access: r.access_type }));
+  // The access types of the roles picked — ["ADMIN","USER"].
+  const roles = parseRoles(roleIds.map((id) => roleById[id]?.access_type));
+  const viewerPicked = roles.includes(ROLES.VIEWER);
+
+  /*
    * PLANT-WISE ACCESS FOR EVERY ROLE — Admin included: the plants and device types are picked
    * here by hand, and the person then works only on those (userScope.js, and the backend's
    * device check). "All" at the end of each list still ticks every one when that is wanted.
@@ -264,7 +306,7 @@ export default function ReportingPersonPanel({ barColor }) {
     setPlantCodes([]);
     setDeviceIds([]);
     setEmpCode("");
-    setRoles([]);
+    setRoleIds([]);
     setDescription("");
     setStatus(1);
     setEditingId(null);
@@ -281,7 +323,7 @@ export default function ReportingPersonPanel({ barColor }) {
     setPlantCodes(saved);
     setDeviceIds(Array.isArray(row.device_ids) ? row.device_ids.map((id) => String(id)) : []);
     setEmpCode(row.emp_code ? String(row.emp_code) : "");
-    setRoles(parseRoles(row.role));
+    setRoleIds(roleIdsOf(row));
     setDescription(row.description ?? "");
     setStatus(row.status ?? 1);
     setError("");
@@ -305,8 +347,10 @@ export default function ReportingPersonPanel({ barColor }) {
     if (plantCodes.length === 0) return setError("Select at least one plant.");
     if (deviceIds.length === 0) return setError("Select at least one device type.");
     if (!empCode) return setError("Select an employee.");
+    if (!roleIds.length) return setError("Select a role.");
     const roleProblem = rolesProblem(roles);
     if (roleProblem) return setError(roleProblem);
+    if (viewerPicked && roleIds.length > 1) return setError("A Viewer role cannot be combined with another role.");
 
     /*
      * ONE ENTRY PER EMPLOYEE. ADDING someone who already has access would REPLACE their entry —
@@ -330,7 +374,7 @@ export default function ReportingPersonPanel({ barColor }) {
           html:
             `<p><b>${esc(who)}</b> already has AMS access:</p>` +
             `<p style="margin-top:8px;text-align:left;font-size:13px">` +
-            `Role: <b>${esc(formatRoles(existing.role) || existing.role)}</b><br/>` +
+            `Role: <b>${esc(rowRoleText(existing) || existing.role)}</b><br/>` +
             `Plant(s): <b>${esc(plants || "-")}</b><br/>` +
             `Device type(s): <b>${esc(types || "-")}</b></p>` +
             `<p style="margin-top:8px;font-size:13px">To add a plant, a device type or a role, edit their existing access.</p>`,
@@ -358,7 +402,7 @@ export default function ReportingPersonPanel({ barColor }) {
     if (otherRoles.length && clash) {
       const emp = employees.find((e) => String(e.emp_code) === String(empCode));
       const who = [empCode, emp?.emp_name].filter(Boolean).join(" - ");
-      const theirs = formatRoles([...new Set(otherRoles)]);
+      const theirs = roleText([...new Set(otherRoles)]);
       return setError(
         roles.includes(ROLES.VIEWER)
           ? `${who} is already ${theirs} in another entry — Viewer cannot be added with Admin or User.`
@@ -378,7 +422,9 @@ export default function ReportingPersonPanel({ barColor }) {
         plant_code: picked.join(","),
         device_ids: deviceIds.map(Number),
         emp_code: Number(empCode),
-        // "ADMIN,USER" for both, "USER" for one — always in the same order.
+        // The roles picked, as Role Master ids ("1,4"); the backend works out `role` from them.
+        role_id: [...roleIds].sort((a, b) => Number(a) - Number(b)).join(","),
+        // Their access types, "ADMIN,USER" — the backend checks it again from the ids.
         role: joinRoles(roles),
         description: description.trim() || null,
         status,
@@ -398,7 +444,7 @@ export default function ReportingPersonPanel({ barColor }) {
             plant_code: "Plant",
             device_ids: "Device Type",
             emp_code: "Employee",
-            role: "Role",
+            role_id: "Role",
             description: "Description",
             status: "Status",
           },
@@ -407,9 +453,10 @@ export default function ReportingPersonPanel({ barColor }) {
             plant_code: (v) => sorted(String(v ?? "").split(",").map((c) => c.trim()).filter(Boolean)).join(", "),
             device_ids: (v) => sorted((Array.isArray(v) ? v : []).map(deviceName)).join(", "),
             emp_code: employee,
-            role: formatRoles,
+            // By name, and order does not matter.
+            role_id: (v) => idsText(splitIds(v).sort((a, b) => Number(a) - Number(b))),
           },
-          what: `reporting person ${employee(original?.emp_code ?? empCode)}`,
+          what: `login access ${employee(original?.emp_code ?? empCode)}`,
         });
         if (!ok) return;
       }
@@ -424,7 +471,7 @@ export default function ReportingPersonPanel({ barColor }) {
       }
       closeForm();
       await loadRows();
-      savedToast(`Reporting person ${editingId ? "updated" : "added"} successfully`);
+      savedToast(`Login access ${editingId ? "updated" : "added"} successfully`);
     } catch {
       setError("Could not reach the server.");
     } finally {
@@ -482,7 +529,7 @@ export default function ReportingPersonPanel({ barColor }) {
      */
     { key: "emp_code", label: "EMP CODE", width: 110 },
     { key: "emp_name", label: "EMPLOYEE NAME" },
-    { key: "role", label: "ROLE", render: (row) => <span>{formatRoles(row.role) || row.role || "-"}</span> },
+    { key: "role", label: "ROLE", render: (row) => <span>{rowRoleText(row) || row.role || "-"}</span> },
     { key: "description", label: "DESCRIPTION", render: (row) => <span>{row.description || "-"}</span> },
     {
       key: "status",
@@ -521,7 +568,7 @@ export default function ReportingPersonPanel({ barColor }) {
         style={{ backgroundColor: barColor }}
       >
         <h3 className="font-semibold uppercase text-white" style={{ fontSize: "12px" }}>
-          Reporting Person
+          Login Access
         </h3>
 
         <button
@@ -536,7 +583,7 @@ export default function ReportingPersonPanel({ barColor }) {
 
       <Modal
         open={showForm}
-        title={editingId ? "Edit Reporting Person" : "Add Reporting Person"}
+        title={editingId ? "Edit Login Access" : "Add Login Access"}
         barColor={barColor}
         onClose={closeForm}
       >
@@ -544,7 +591,8 @@ export default function ReportingPersonPanel({ barColor }) {
           {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
           {loadError && <p className="mb-3 text-sm text-amber-600">{loadError}</p>}
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* gap-y-5: room for the Role hint that hangs under its picker. */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-5">
             <div>
               <label className={labelCls}>Company <span className="text-red-500">*</span></label>
               <SearchableSelect
@@ -623,43 +671,46 @@ export default function ReportingPersonPanel({ barColor }) {
               />
             </div>
 
-            <div>
+            {/* relative: the hint under the picker hangs below it rather than making this row taller. */}
+            <div className="relative">
               <label className={labelCls}>Role <span className="text-red-500">*</span></label>
               {/*
-                One role or several: User alone, Admin alone, or Admin + User together. VIEWER
-                STANDS ALONE: with Viewer ticked, Admin and User are greyed out and cannot be
-                ticked; with Admin or User ticked, Viewer is greyed out. Untick to change.
+                One role or several, from Role Master. A VIEWER-type role STANDS ALONE: with one
+                ticked, every other role is greyed out; with any other ticked, Viewer-type roles
+                are greyed out. Untick to change.
               */}
               <CheckMultiSelect
-                options={ROLE_OPTIONS}
-                values={roles}
-                onChange={(next) => setRoles(parseRoles(next))}
+                options={roleOptions}
+                values={roleIds}
+                onChange={(next) => setRoleIds(next)}
                 isOptionDisabled={(opt) =>
-                  roles.includes(ROLES.VIEWER)
-                    ? opt.value !== ROLES.VIEWER
-                    : roles.length > 0 && opt.value === ROLES.VIEWER
+                  viewerPicked
+                    ? !roleIds.includes(opt.value)
+                    : roleIds.length > 0 && opt.access === ROLES.VIEWER
                 }
                 noun="roles"
-                placeholder="Select Role..."
+                placeholder={roleRows ? "Select Role..." : "Role Master could not be loaded"}
                 showAll={false}
               />
-              <p className="mt-1 text-[11px] text-gray-500 normal-case">
-                {roles.includes(ROLES.VIEWER)
-                  ? "Viewer is view-only — no other role can be added with it."
-                  : roles.length
-                    ? "Viewer cannot be added with Admin or User."
-                    : "Admin and User can be given together; Viewer only on its own."}
+              {/* On a phone (one column) it stays in the flow, so it cannot cover the next field. */}
+              <p className="mt-1 text-[11px] leading-tight text-gray-500 normal-case md:absolute md:left-0 md:top-full md:mt-0.5">
+                {viewerPicked
+                  ? "A Viewer role is view-only — no other role can be added with it."
+                  : roleIds.length
+                    ? "A Viewer role cannot be added with these."
+                    : "Several roles can be given together; a Viewer role only on its own."}
               </p>
             </div>
 
             <div>
               <label className={labelCls}>Description</label>
+              {/* Same box as the pickers beside it (nativeLikeSelect: 38px, 14px, #d1d5db). */}
               <input
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Optional note"
                 maxLength={255}
-                className={fieldCls}
+                className="block w-full h-[38px] rounded-[4px] border border-[#d1d5db] bg-white px-3 text-[14px] outline-none focus:border-[#3482AE]"
               />
             </div>
 
@@ -695,7 +746,7 @@ export default function ReportingPersonPanel({ barColor }) {
             data={rows}
             columns={columns}
             loading={loadingRows}
-            reportTitle="Reporting Person"
+            reportTitle="Login Access"
           />
         </div>
     </div>
