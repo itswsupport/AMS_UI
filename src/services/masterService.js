@@ -38,9 +38,8 @@ export const getDeviceStatusList = () => apiGet("devicestatus/list");
 /** Plant-wise departments from db_all_master.plant_dept_mst — read-only. */
 export const getDepartmentList = () => apiGet("department/list");
 
-/** Location Master — db_all_master.location_master (company -> plant -> location). */
+/** Location Master — db_all_master.location_master (company -> plant -> location) — read-only. */
 export const getLocationList = () => apiGet("location/list");
-export const saveLocation = (data) => apiPost("location/save", data);
 
 /*
  * ---------------------------------------------------------------------------------------

@@ -1,5 +1,8 @@
+import CompanyMasterPanel from "./CompanyMasterPanel";
+import PlantMasterPanel from "./PlantMasterPanel";
 import CategoryMasterPanel from "./CategoryMasterPanel";
 import SubCategoryMasterPanel from "./SubCategoryMasterPanel";
+import RoleMasterPanel from "./RoleMasterPanel";
 import ReportingPersonPanel from "./ReportingPersonPanel";
 import RamMasterPanel from "./RamMasterPanel";
 import ProcessorMasterPanel from "./ProcessorMasterPanel";
@@ -17,7 +20,7 @@ import DeviceMasterPanel from "@/components/masters/DeviceMasterPanel";
 import LocationMasterPanel from "./LocationMasterPanel";
 import {
   Layers, Boxes, UserCog, MemoryStick, Cpu, HardDrive, Monitor, ShieldCheck, FileCheck,
-  Package, Server, Network, KeyRound, Tag, Barcode, Binary, MapPin,
+  Package, Server, Network, KeyRound, Tag, Barcode, Binary, MapPin, Building2, Factory, BadgeCheck,
 } from "lucide-react";
 
 /**
@@ -37,6 +40,20 @@ import {
  */
 export const MASTERS = [
   {
+    // First: company -> plant is what Department and Location hang off. Read only.
+    key: "company",
+    title: "Company Master",
+    icon: <Building2 className="w-8 h-8" />,
+    Panel: CompanyMasterPanel,
+  },
+  {
+    // Beside Company Master: the plants of those companies, from the same table. Read only.
+    key: "plant",
+    title: "Plant Master",
+    icon: <Factory className="w-8 h-8" />,
+    Panel: PlantMasterPanel,
+  },
+  {
     key: "department",
     title: "Department Master",
     icon: <Layers className="w-8 h-8" />,
@@ -51,14 +68,24 @@ export const MASTERS = [
     Panel: LocationMasterPanel,
   },
   {
+    // Hidden for now: no card, and its URL shows "not found". Remove `hidden` to bring it back.
     key: "subcategory",
     title: "Sub Category Master",
     icon: <Boxes className="w-8 h-8" />,
     Panel: SubCategoryMasterPanel,
+    hidden: true,
+  },
+  {
+    // Before Login Access: the roles it offers come from here (db_asset.ams_role_master).
+    key: "role",
+    title: "Role Master",
+    icon: <BadgeCheck className="w-8 h-8" />,
+    Panel: RoleMasterPanel,
   },
   {
     key: "reportingperson",
-    title: "Reporting Person",
+    // Shown as "Login Access"; the URL stays /reportingperson so existing links keep working.
+    title: "Login Access",
     icon: <UserCog className="w-8 h-8" />,
     Panel: ReportingPersonPanel,
   },
@@ -144,8 +171,11 @@ export const MASTERS = [
   },
 ];
 
-/** One master by its URL segment, or undefined for a slug nobody registered. */
-export const findMaster = (key) => MASTERS.find((m) => m.key === key);
+/** The masters the Setting page shows — every one not marked `hidden`. */
+export const VISIBLE_MASTERS = MASTERS.filter((m) => !m.hidden);
+
+/** One master by its URL segment, or undefined for a slug nobody registered or a hidden one. */
+export const findMaster = (key) => VISIBLE_MASTERS.find((m) => m.key === key);
 
 /** The sidebar blue, shared by the cards and each master's own title bar. */
 export const SIDEBAR_COLOR = "#3482AE";

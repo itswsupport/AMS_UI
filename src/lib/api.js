@@ -84,7 +84,7 @@ const MASTER_LISTS = new Set([
   "device/list", "devicename/list", "model/list", "hdd/list", "ipaddress/list", "os/list",
   "processor/list", "ram/list", "systemtype/list", "warranty/list", "product/list",
   "license/list", "server/list", "category/list", "subcategory/list", "plantcategory/list",
-  "vendor/list",
+  "vendor/list", "role/list",
 ]);
 const MASTER_TTL_MS = 5 * 60 * 1000;
 const kept = new Map(); // url -> { at, text }
