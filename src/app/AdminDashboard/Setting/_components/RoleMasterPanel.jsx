@@ -1,21 +1,21 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 import DataTable from "@/components/ui/common/DataTable";
 import Modal from "@/components/ui/common/Modal";
-import { confirmDelete, deletedToast, confirmMasterUpdate, savedToast, warnAlert } from "@/lib/confirmDelete";
-import { getRoleList, saveRole, updateRole, deleteRole } from "@/services/roleService";
+import { confirmMasterUpdate, savedToast } from "@/lib/confirmDelete";
+import { getRoleList, saveRole, updateRole } from "@/services/roleService";
 import SearchableSelect from "@/components/ui/common/SearchableSelect";
 
 /**
  * Role Master — db_asset.ams_role_master. The roles Login Access gives, by id.
  *
  * Admin, User and Viewer are built in; ADD makes more ("Super Admin", "Approval") with just a
- * name, a description and a status. Only Active roles are offered in Login Access.
+ * name and a description — always Active. EDIT can make a role Inactive; only Active roles are
+ * offered in Login Access.
  *
- * Built-in roles cannot be deleted. An added role can be deleted only while no one holds it
- * (the backend checks Login Access).
+ * There is no delete here: a role no longer wanted is made Inactive.
  *
  * @param barColor the card's colour, so the bar reads as attached to it
  */
@@ -72,26 +72,6 @@ export default function RoleMasterPanel({ barColor }) {
     setShowForm(true);
   };
 
-  const onDelete = async (row) => {
-    const confirmed = await confirmDelete(
-      "Delete role?",
-      `"${row.role_name}" will be removed from the role master.`
-    );
-    if (!confirmed) return;
-    try {
-      const res = await deleteRole(row.id);
-      if (res?.status_code !== 200) {
-        // The backend says why — e.g. the role is still given to someone in Login Access.
-        await warnAlert("Cannot delete", res?.message || "Could not delete.");
-        return;
-      }
-      await loadRows();
-      deletedToast("Role deleted");
-    } catch {
-      setError("Could not reach the server.");
-    }
-  };
-
   const onSubmit = async (e) => {
     e.preventDefault();
     const value = name.trim();
@@ -100,7 +80,8 @@ export default function RoleMasterPanel({ barColor }) {
     setSaving(true);
     setError("");
     try {
-      const body = { role_name: value, description: description.trim() || null, status };
+      // A new role is always saved Active; only EDIT changes the status.
+      const body = { role_name: value, description: description.trim() || null, status: editing ? status : 1 };
       if (editing) {
         // UPDATE asks first, listing each changed field FROM → TO; Cancel sends nothing.
         const ok = await confirmMasterUpdate(editing, body, {
@@ -141,21 +122,19 @@ export default function RoleMasterPanel({ barColor }) {
       label: "ACTION",
       render: (row) => (
         <div className="flex h-full items-center gap-3">
+          {/* Edit only — no delete: a role no longer wanted is made Inactive instead. */}
           <button onClick={() => onEdit(row)} title="Edit" className="text-[#3482AE] hover:text-[#2a6d8f]">
             <Pencil className="w-4 h-4" />
           </button>
-          {/* Built-in roles (Admin, User, Viewer) cannot be deleted. */}
-          {!row.built_in && (
-            <button onClick={() => onDelete(row)} title="Delete" className="text-[#e74c3c] hover:text-[#c0392b]">
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
         </div>
       ),
     },
   ];
 
   const labelCls = "text-sm font-semibold text-[#3482AE] uppercase block mb-1";
+  // Same box as the Status select (SearchableSelect): 38px high, 14px text, #d1d5db border.
+  const inputCls =
+    "block w-full h-[38px] rounded-[4px] border border-[#d1d5db] bg-white px-3 text-[14px] outline-none focus:border-[#3482AE]";
 
   return (
     <div>
@@ -181,20 +160,23 @@ export default function RoleMasterPanel({ barColor }) {
         <form onSubmit={onSubmit} className="p-4 sm:p-6">
           {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* ADD has no Status — a new role is always Active. EDIT can make it Inactive. */}
+          <div className={`grid grid-cols-1 ${editing ? "md:grid-cols-3" : "md:grid-cols-2"} gap-x-4 gap-y-5`}>
             <div>
               <label className={labelCls}>Role Name <span className="text-red-500">*</span></label>
               <input value={name} onChange={(e) => setName(e.target.value)} maxLength={50}
-                placeholder="e.g. IT Support" className="w-full border rounded px-3 py-2 text-sm" />
+                placeholder="e.g. IT Support" className={inputCls} />
             </div>
 
             <div>
               <label className={labelCls}>Description</label>
               <input value={description} onChange={(e) => setDescription(e.target.value)}
-                placeholder="Optional note" maxLength={255} className="w-full border rounded px-3 py-2 text-sm" />
+                placeholder="Optional note" maxLength={255} className={inputCls} />
             </div>
 
-            <div>
+            {/* relative: the hint hangs below the box, so it does not push the row out of line. */}
+            {editing && (
+            <div className="relative">
               <label className={labelCls}>Status</label>
               <SearchableSelect
                 value={status}
@@ -204,10 +186,11 @@ export default function RoleMasterPanel({ barColor }) {
                 <option value={1}>Active</option>
                 <option value={0}>Inactive</option>
               </SearchableSelect>
-              <p className="mt-1 text-[11px] text-gray-500 normal-case">
+              <p className="mt-1 text-[11px] text-gray-500 normal-case md:absolute md:left-0 md:top-full md:mt-0.5">
                 Inactive roles are not shown in Login Access.
               </p>
             </div>
+            )}
           </div>
 
           <div className="mt-4 flex flex-wrap justify-center gap-2">

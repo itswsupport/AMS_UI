@@ -755,6 +755,28 @@ export default function BulkUploadPanel({ type }) {
       return;
     }
 
+    /*
+     * READ THE FILE FIRST, before the lists below are fetched. The browser only holds a
+     * reference to the file on disk; if it changes after being picked (saved again in Excel,
+     * synced by OneDrive or a network folder) the read fails with NotReadableError. Reading it
+     * straight away leaves no time for that.
+     */
+    let bytes;
+    try {
+      bytes = await file.arrayBuffer();
+    } catch (err) {
+      // A warning, not an error: the reason is told to the user below.
+      console.warn("Bulk upload: the browser could not read the file", err);
+      showError(
+        "Could not read the file",
+        err?.name === "NotReadableError"
+          ? `"${file.name}" changed or is locked after it was chosen. Save and close it in Excel (or wait for OneDrive to finish syncing), then choose it again.`
+          : `"${file.name}" could not be read. Choose it again.`
+      );
+      clearPicker();
+      return;
+    }
+
     try {
       /*
        * Devices already added (name -> Reference No), so a row for one is marked in the preview
@@ -838,7 +860,7 @@ export default function BulkUploadPanel({ type }) {
       const xlsxModule = await import("xlsx-js-style");
       // An older (CommonJS) package: its functions may sit on .default once loaded this way.
       const XLSX = xlsxModule.read ? xlsxModule : xlsxModule.default;
-      const { missing, rows: parsed } = parseSheet(XLSX, await file.arrayBuffer(), config, ctx);
+      const { missing, rows: parsed } = parseSheet(XLSX, bytes, config, ctx);
       if (missing) {
         Swal.fire({
           icon: "error",
