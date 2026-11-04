@@ -37,6 +37,12 @@ const nextConfig = {
     optimizeCss: false,
   },
 
+  // The login page is /Login/ams/ (src/app/Login/ams). The old /Login/ — bookmarks, links
+  // already sent — is forwarded there rather than answering 404.
+  async redirects() {
+    return [{ source: "/Login", destination: "/Login/ams/", permanent: false }];
+  },
+
   // The browser calls /api/* (see API_BASE_URL in src/config/api.js) and this hands it to
   // the Spring Boot backend. Going through a rewrite rather than calling the backend host
   // directly keeps the request same-origin, so no CORS preflight and no hard-coded host in

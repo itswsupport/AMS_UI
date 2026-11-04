@@ -95,9 +95,9 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-# /Login/ with the trailing slash: next.config.mjs sets trailingSlash: true, so /Login is a
-# 308 and only /Login/ answers 200. busybox wget, which alpine already carries.
+# /Login/ams/ with the trailing slash: next.config.mjs sets trailingSlash: true, so /Login/ams is a
+# 308 and only /Login/ams/ answers 200. busybox wget, which alpine already carries.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-  CMD wget --spider -q http://localhost:3000/Login/ || exit 1
+  CMD wget --spider -q http://localhost:3000/Login/ams/ || exit 1
 
 CMD ["node", "server.js"]

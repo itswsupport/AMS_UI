@@ -18,7 +18,8 @@ export const PORTAL_ENTRY_URL = process.env.NEXT_PUBLIC_PORTAL_ENTRY_URL || "";
 // Where users land back on the portal after logging out.
 export const PORTAL_DASHBOARD_URL = process.env.NEXT_PUBLIC_PORTAL_DASHBOARD_URL || "";
 
-export const LOCAL_LOGIN_PATH = "/Login";
+// The page lives at src/app/Login/ams; next.config.mjs forwards the old /Login/ here.
+export const LOCAL_LOGIN_PATH = "/Login/ams";
 
 /** Someone hit a protected page without a session. */
 export function redirectUnauthenticated(router) {
@@ -26,8 +27,8 @@ export function redirectUnauthenticated(router) {
     window.location.href = PORTAL_ENTRY_URL;
     return;
   }
-  // Trailing slash on purpose: next.config.mjs sets trailingSlash:true, so "/Login" is
-  // answered with a 308 to "/Login/". Navigating straight to the canonical form skips that
+  // Trailing slash on purpose: next.config.mjs sets trailingSlash:true, so "/Login/ams" is
+  // answered with a 308 to "/Login/ams/". Navigating straight to the canonical form skips that
   // extra hop — which matters most during logout, when this fires alongside the hard
   // navigation in redirectAfterLogout().
   router.replace(`${LOCAL_LOGIN_PATH}/`);

@@ -17,9 +17,9 @@ pipeline {
     HOST_PORT = '3023'
 
     // The app serves from the ROOT: next.config.mjs has no basePath. Pages are checked
-    // with a trailing slash because next.config.mjs sets trailingSlash: true — /Login is a
-    // 308 and only /Login/ answers 200.
-    LOGIN_PAGE = '/Login/'
+    // with a trailing slash because next.config.mjs sets trailingSlash: true — /Login/ams is a
+    // 308 and only /Login/ams/ answers 200 (/Login/ itself redirects there).
+    LOGIN_PAGE = '/Login/ams/'
 
     // What the browser calls (relative, same-origin) — the default in src/config/api.js.
     // The Next rewrite proxies it to the backend and strips the /api prefix:
@@ -65,50 +65,34 @@ pipeline {
       }
     }
 
-    stage('Build') {
-      // --target builder stops at the Next compile, so a broken build fails here. Same
-      // build args as Package: they are consumed by `npm run build`, which runs in this
-      // stage, and Package then reuses these cached layers.
-      //
-      // NEXT_PUBLIC_MOCK_AUTH=false keeps the demo logins (admin/admin...) out of the live
-      // build — see the Dockerfile and the check in Verify Build.
-      steps {
-        sh '''
-          docker build \
-            --target builder \
-            --build-arg BACKEND_URL=${BACKEND_ORIGIN} \
-            --build-arg NEXT_PUBLIC_API_BASE_URL=${API_BASE_PATH} \
-            --build-arg NEXT_PUBLIC_MOCK_AUTH=false \
-            --build-arg NEXT_PUBLIC_LOGIN_MODE=local \
-            -t ${IMAGE_NAME}:builder-${TAG} \
-            .
-        '''
-      }
-    }
-
-    stage('Lint') {
-      // Inside the builder image, so the agent needs no Node of its own. Report-only:
-      // next.config.mjs ignores ESLint during builds, so lint has never gated this code.
-      steps {
-        sh 'docker run --rm ${IMAGE_NAME}:builder-${TAG} npm run lint || true'
-      }
-    }
-
     // SonarQube / OWASP Dependency Check: the SonarQube, OWASP Dependency-Check
     // and HTML Publisher plugins are not installed on this Jenkins. Install them
     // and copy the stages from payroll-ui's Jenkinsfile to re-enable.
 
-    stage('Package') {
-      // Same build args again; the npm ci and compile layers are reused from Build.
+    stage('Build Docker Image') {
+      // ONE build, as payroll-ui does — not a --target builder build followed by a second
+      // build that reuses its cached layers. --no-cache builds every layer fresh, so the
+      // build never leans on a cached layer that a `docker image prune` (this job's or
+      // another job's on the same server) may delete mid-build — the cause of
+      // "failed to export layer ... lease does not exist". A broken Next compile still fails
+      // here, inside `npm run build`.
+      //
+      // retry(2): if the server's Docker still fails once while saving a layer, the build is
+      // tried again instead of failing the deploy. A real compile error fails both tries.
+      //
+      // NEXT_PUBLIC_MOCK_AUTH=false keeps the demo logins (admin/admin...) out of the live
+      // build — see the Dockerfile and the check in Verify Build.
       steps {
-        sh '''
-          docker build \
-            --build-arg BACKEND_URL=${BACKEND_ORIGIN} \
-            --build-arg NEXT_PUBLIC_API_BASE_URL=${API_BASE_PATH} \
-            --build-arg NEXT_PUBLIC_MOCK_AUTH=false \
-            --build-arg NEXT_PUBLIC_LOGIN_MODE=local \
-            -t ${IMAGE_NAME}:latest -t ${IMAGE_NAME}:${TAG} .
-        '''
+        retry(2) {
+          sh '''
+            docker build --no-cache \
+              --build-arg BACKEND_URL=${BACKEND_ORIGIN} \
+              --build-arg NEXT_PUBLIC_API_BASE_URL=${API_BASE_PATH} \
+              --build-arg NEXT_PUBLIC_MOCK_AUTH=false \
+              --build-arg NEXT_PUBLIC_LOGIN_MODE=local \
+              -t ${IMAGE_NAME}:latest -t ${IMAGE_NAME}:${TAG} .
+          '''
+        }
       }
     }
 
@@ -376,8 +360,9 @@ pipeline {
           # Keep only last 3 builds
           docker images ${IMAGE_NAME} --format "{{.Tag}}" | grep -E '^[0-9]+$' | sort -rn | tail -n +4 | xargs -r -I {} docker rmi ${IMAGE_NAME}:{}
 
-          # Remove dangling images
-          docker image prune -f
+          # Remove dangling images — only those over a day old, so this never deletes layers
+          # another job on this server is building with right now.
+          docker image prune -f --filter "until=24h"
         '''
       }
     }
@@ -439,8 +424,6 @@ Please check the console output: ${env.BUILD_URL}console
       sh 'docker logs ${CONTAINER_NAME} > docker-logs.txt 2>&1 || true'
       archiveArtifacts artifacts: 'docker-logs.txt, trivy-*.txt, trivy-*.json, trivy-*.html', allowEmptyArchive: true
 
-      // The builder image carries the whole node_modules tree — don't leave it behind.
-      sh 'docker image rm -f ${IMAGE_NAME}:builder-${TAG} || true'
       sh 'docker image prune -f --filter "until=168h" || true'
     }
   }

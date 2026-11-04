@@ -2,8 +2,12 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { hasPermission, hasAnyPermission, hasAllPermissions } from "@/lib/permissions";
+import { LOCAL_LOGIN_PATH } from "@/config/auth";
 
-export function ProtectedRoute({ children, permission, fallback = null, redirectTo = "/Login/" }) {
+// Not signed in: the login page, /Login/ams/.
+const LOGIN_URL = `${LOCAL_LOGIN_PATH}/`;
+
+export function ProtectedRoute({ children, permission, fallback = null, redirectTo = LOGIN_URL }) {
   const { user, loading } = useAuth();
   const router = useRouter();
 
@@ -28,7 +32,7 @@ export function ProtectedRoute({ children, permission, fallback = null, redirect
   return children;
 }
 
-export function ProtectedRouteAny({ children, permissions = [], fallback = null, redirectTo = "/Login/" }) {
+export function ProtectedRouteAny({ children, permissions = [], fallback = null, redirectTo = LOGIN_URL }) {
   const { user, loading } = useAuth();
   const router = useRouter();
 
@@ -53,7 +57,7 @@ export function ProtectedRouteAny({ children, permissions = [], fallback = null,
   return children;
 }
 
-export function ProtectedRouteAll({ children, permissions = [], fallback = null, redirectTo = "/Login/" }) {
+export function ProtectedRouteAll({ children, permissions = [], fallback = null, redirectTo = LOGIN_URL }) {
   const { user, loading } = useAuth();
   const router = useRouter();
 
