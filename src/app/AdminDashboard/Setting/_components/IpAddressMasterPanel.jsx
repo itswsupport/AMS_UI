@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import DataTable from "@/components/ui/common/DataTable";
 import Modal from "@/components/ui/common/Modal";
@@ -9,6 +9,48 @@ import { guardDuplicate } from "@/lib/masterDuplicate";
 import { getIpAddressList, saveIpAddress, updateIpAddress, deleteIpAddress } from "@/services/ipAddressService";
 
 import SearchableSelect from "@/components/ui/common/SearchableSelect";
+
+/** An IPv4 address: four numbers 0-255 joined by dots, e.g. 192.168.10.55. The backend checks the same. */
+const IPV4 = /^((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
+
+/**
+ * The address as typed, kept to four numbers with dots: digits and dots only, at most three
+ * digits a number — a fourth digit starts the next number, so the dot appears by itself — and
+ * at most four numbers. "19216810" becomes "192.168.10", "192..168" becomes "192.168".
+ */
+function formatIp(raw) {
+  const parts = [""];
+  for (const ch of String(raw ?? "")) {
+    const cur = parts.length - 1;
+    if (ch === ".") {
+      if (parts[cur] === "") continue;
+      // A dot after the fourth number: anything after it would be a fifth number — dropped.
+      if (parts.length === 4) break;
+      parts.push("");
+    } else if (/\d/.test(ch)) {
+      if (parts[cur].length < 3) parts[cur] += ch;
+      else if (parts.length < 4) parts.push(ch);
+      else break;
+    }
+  }
+  return parts.join(".");
+}
+
+/**
+ * What to say the moment something other than a digit or a dot is typed or pasted, as the
+ * other forms do (fieldFormats' typedWarning): "… letters are not allowed". Null when it fits.
+ */
+function ipTypedWarning(raw) {
+  const refused = [...new Set(String(raw ?? "").match(/[^0-9.]/g) ?? [])];
+  if (!refused.length) return null;
+  const kinds = [];
+  if (refused.some((ch) => /[A-Za-z]/.test(ch))) kinds.push("letters");
+  if (refused.some((ch) => ch === " ")) kinds.push("spaces");
+  if (refused.some((ch) => /[^A-Za-z ]/.test(ch))) kinds.push("symbols");
+  const what = kinds.length > 1 ? `${kinds.slice(0, -1).join(", ")} and ${kinds.at(-1)}` : kinds[0];
+  return `IP Address uses numbers only — ${what} are not allowed.`;
+}
+
 /**
  * Product Master — its own screen over its own table, db_asset.ams_product_master.
  *
@@ -41,6 +83,10 @@ export default function IpAddressMasterPanel({ barColor }) {
   const [status, setStatus] = useState(1);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  // The warning shown for 3 seconds after a letter or symbol is typed into IP Address.
+  const [typed, setTyped] = useState("");
+  const typedTimer = useRef(null);
+  useEffect(() => () => clearTimeout(typedTimer.current), []);
 
   // BaseResponseBO always answers HTTP 200, so status_code in the body is the real outcome.
   const unwrap = (res) =>
@@ -67,6 +113,8 @@ export default function IpAddressMasterPanel({ barColor }) {
     setDescription("");
     setStatus(1);
     setError("");
+    clearTimeout(typedTimer.current);
+    setTyped("");
   };
 
   const openAdd = () => {
@@ -81,7 +129,8 @@ export default function IpAddressMasterPanel({ barColor }) {
 
   const onEdit = (row) => {
     setEditingId(row.id);
-    setName(row.ip_address ?? "");
+    // Trimmed, so a stray line break saved with an old address is gone on UPDATE.
+    setName(String(row.ip_address ?? "").trim());
     setDescription(row.description ?? "");
     setStatus(row.status ?? 1);
     setError("");
@@ -113,6 +162,9 @@ export default function IpAddressMasterPanel({ barColor }) {
     e.preventDefault();
     const value = name.trim();
     if (!value) return setError(`${nameLabel} is required.`);
+    if (!IPV4.test(value)) {
+      return setError("Enter a valid IP address: four numbers from 0 to 255 separated by dots, e.g. 192.168.10.55.");
+    }
 
     setSaving(true);
     setError("");
@@ -235,10 +287,25 @@ export default function IpAddressMasterPanel({ barColor }) {
               </label>
               <input
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                // Digits only, dots placed automatically (formatIp). A letter or symbol is
+                // dropped and says why, under the box, for 3 seconds.
+                onChange={(e) => {
+                  const warning = ipTypedWarning(e.target.value);
+                  clearTimeout(typedTimer.current);
+                  setTyped(warning ?? "");
+                  if (warning) typedTimer.current = setTimeout(() => setTyped(""), 3000);
+                  setName(formatIp(e.target.value));
+                }}
+                // No maxLength: formatIp caps it at four numbers of three digits each.
+                inputMode="decimal"
                 placeholder={placeholder}
-                className="w-full border rounded px-3 py-2 text-sm"
+                className={`w-full border rounded px-3 py-2 text-sm${typed ? " border-red-500" : ""}`}
               />
+              {typed && (
+                <p role="alert" className="mt-1 text-[11px] font-semibold text-red-600 normal-case">
+                  {typed}
+                </p>
+              )}
             </div>
 
             <div>

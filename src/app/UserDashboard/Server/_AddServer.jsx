@@ -203,12 +203,6 @@ const REQUIRED_FIELDS = [
   ["os_name", "OS"],
 ];
 const IS_REQUIRED = new Set(REQUIRED_FIELDS.map(([k]) => k));
-
-/**
- * With `format` (a key of FIELD_FORMATS) a refused character is dropped as typed and a warning
- * says so right then, fading after a few seconds — as on ADD DEVICE. `error` is the field's
- * message from SUBMIT, shown in red until the value is put right.
- */
 function TextField({ label, value, onChange, disabled, placeholder, maxLength = 150, format, error, required }) {
   const [typed, setTyped] = useState("");
   const timer = useRef(null);
