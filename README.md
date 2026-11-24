@@ -38,7 +38,7 @@ Current device ids: **1 = Desktop, 2 = Laptop, 3 = Printer, 5 = Tablet**.
 - `device_name` is unique across the whole table — two machines can never share a name.
 - `status`: `1` active, `0` inactive (hidden from dropdowns), `-1` deleted.
 
----
+___________________________________________________________________________
 
 ## The device flow
 
@@ -87,9 +87,32 @@ ams_login_access->Reporting Person
 
 | Role | What they can do |
 |---|---|
-| **ADMIN** | Everything — every device type, every plant |
-| **USER** | Adds and sees **only** their device types, 
-___________________________________________________________
+| ADMIN | Everything master data |
+| USER | Adds and sees **only** their device types, 
+[Viewer] has only access of the view device access  whatvery plant is given to him/her..
+
+important 
+___________________________________________________________________________
+user ,admin ->we can give the both the access to the employee & the single one access as well ..
+
+__________________________________________________________________________
+
+viewer ->only view the user dashborad 
+
+
+__________________________________________________________________________
+company master 
+db_all_master.company_mst. 
+________________________________________________________________________
+plant master
+db_all_master.plant_mst, 
+___________________________________________________________________________
+SELECT * FROM db_asset.ams_login_access;
+which employee has what access 
+__________________________________________________________________________
+SELECT * FROM db_asset.ams_role_master;
+we can add the role in this  like admin,viewer , user
+___________________________________________________________________________
 Department Master ,location master
 Location master =>db_all_master
 taken form the db_ems_version2.sf
@@ -156,14 +179,14 @@ _____________________________________________________________________________
 When software was added or submited
 SELECT * FROM db_asset.ams_software_master;
 
-_________________________________________________________
+__________________________________________________________________________
 Before  after change in the server which was alredy added.
 SELECT * FROM db_asset.ams_server_user_log;
 
-_________________________________________________________
+___________________________________________________________________________
 In this the software changes which are alredy added.
 
 SELECT * FROM db_asset.ams_software_user_log;
 
-_________________________________________________________
+___________________________________________________________________________
 

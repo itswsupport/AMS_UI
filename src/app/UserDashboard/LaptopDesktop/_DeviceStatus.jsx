@@ -167,7 +167,9 @@ export default function DeviceStatus({ barColor, onRegister, stateFilter = "ALL"
    */
   const shown = useMemo(
     () =>
-      keep(rows).map((r) => {
+      // SAVED DEVICES FIRST (a record in ams_add_device_master, with its plant, company and
+      // details), then the names not added yet — each group keeps the list's own order.
+      [...keep(rows).filter((r) => r.registered), ...keep(rows).filter((r) => !r.registered)].map((r) => {
         const plant = String(r.plant ?? "").trim();
         const byEmployee = r.state === "ASSIGNED" && Boolean(r.holder_entry_id);
         return {

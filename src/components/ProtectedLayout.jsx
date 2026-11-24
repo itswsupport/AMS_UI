@@ -9,6 +9,7 @@ import ScrollFooter from "@/components/ScrollFooter";
 import { redirectUnauthenticated } from "@/config/auth";
 import { HelpCircle, LogOut } from "lucide-react";
 import { useIdleLogout } from "@/hooks/useIdleLogout";
+import { BASE_PATH } from "@/config/api";
 
 // Pages that render without a session.
 const PUBLIC_ROUTES = ["/Login", "/access-denied"];
@@ -55,15 +56,16 @@ export default function ProtectedLayout({ children }) {
               black against this blue header on hover/click. */}
           <SidebarTrigger className="p-0 bg-transparent hover:bg-transparent border-none shadow-none text-white hover:text-white" />
           <div className="flex items-center space-x-4">
-            {/*
-              * HELP — the user guide (public/user_manual/help.html) is NOT opened yet; it is kept
-              * hidden until it is ready. To show it, make this an <a> to
-              * `${BASE_PATH}/user_manual/help.html` with target="_blank".
-              */}
-            <button type="button" className="flex items-center space-x-2 px-3 py-1.5 rounded transition-colors">
+            {/* HELP — opens the user guide (public/user_manual/help.html) in a new tab. */}
+            <a
+              href={`${BASE_PATH}/user_manual/help.html`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center space-x-2 px-3 py-1.5 rounded transition-colors"
+            >
               <HelpCircle className="w-5 h-5" />
               <span>HELP</span>
-            </button>
+            </a>
             <button
               onClick={logout}
               className="flex items-center space-x-2 px-3 py-1.5 rounded transition-colors"

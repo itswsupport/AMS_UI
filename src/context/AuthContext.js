@@ -7,6 +7,7 @@ import { redirectAfterLogout } from "@/config/auth";
 import { MOCK_AUTH_ENABLED, mockLogin } from "@/lib/mockAuth";
 import { markActivity, clearActivity } from "@/lib/session";
 import { clearApiCache } from "@/lib/api";
+import { getReportingPersonList } from "@/services/reportingPersonService";
 
 export const AuthContext = createContext();
 
@@ -34,14 +35,48 @@ export function AuthProvider({ children }) {
   // Restore the session on first paint.
   useEffect(() => {
     const stored = localStorage.getItem("ams_user");
+    let restored = null;
     if (stored && stored !== "undefined") {
       try {
-        setUser(JSON.parse(stored));
+        restored = JSON.parse(stored);
+        setUser(restored);
       } catch (err) {
         localStorage.removeItem("ams_user");
       }
     }
     setLoading(false);
+
+    /*
+     * ACCESS KEPT UP TO DATE. The plants, companies, device types and role saved at sign-in can
+     * be changed afterwards in Setting → Login Access. Read again from the database each time the
+     * app opens, so a change shows at once — e.g. plants 2001 / 3001 given today appear in Add
+     * Device without signing in again. Only this person's own row is used; if it cannot be read,
+     * the session simply keeps what it had.
+     */
+    if (!restored?.token || MOCK_AUTH_ENABLED) return;
+    getReportingPersonList()
+      .then((res) => {
+        const rows = res?.status_code === 200 && Array.isArray(res.response) ? res.response : [];
+        const mine = rows.find(
+          (r) => String(r.emp_code) === String(restored.emp_code ?? restored.user_id) && r.status === 1
+        );
+        if (!mine) return;
+        const plantCodes = String(mine.plant_code ?? "").split(",").map((c) => c.trim()).filter(Boolean);
+        const fresh = {
+          ...restored,
+          plant_code: mine.plant_code ?? restored.plant_code,
+          plant_codes: plantCodes,
+          plant_company: mine.company_name ?? restored.plant_company,
+          device_ids: Array.isArray(mine.device_ids) ? mine.device_ids : restored.device_ids,
+          role: mine.role || restored.role,
+        };
+        if (JSON.stringify(fresh) === JSON.stringify(restored)) return;
+        setUser(fresh);
+        localStorage.setItem("ams_user", JSON.stringify(fresh));
+      })
+      .catch(() => {
+        /* offline or not allowed — keep the access from sign-in */
+      });
   }, []);
 
   /*

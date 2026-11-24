@@ -5,17 +5,26 @@ import PageTitle from "@/components/ui/common/PageTitle";
 import DashboardCard from "@/components/ui/common/DashboardCard";
 import AddDevice from "./_AddDevice";
 import DeviceStatus from "./_DeviceStatus";
-import { getAssetList, getDeviceStatus } from "@/services/assetService";
+import { getAssetList, getAssetDetails, getDeviceStatus } from "@/services/assetService";
 import { getDeviceList } from "@/services/deviceService";
 import { Plus } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { getUserScope } from "@/lib/userScope";
 import { isViewer } from "@/lib/permissions";
+import { warnAlert } from "@/lib/confirmDelete";
 
 /*
  * The three device-status cards: each opens the same list (_DeviceStatus) showing only its own
  * devices, and shows their count across every device type.
  */
+/** Fields of ADD DEVICE an old per-type table (ams_desktop_master, …) may already hold. */
+const LEGACY_FORM_FIELDS = [
+  "po_no", "asset_code", "asset_sn", "service_tag", "device_status", "ip_address", "plant",
+  "department", "location", "model", "processor", "ram", "hdd", "os", "os_service_pack",
+  "ms_office", "charger", "software_1", "software_2", "classification", "system_type",
+  "warranty_status", "last_date_of_warranty", "total_warranty_years", "description",
+];
+
 const STATUS_VIEWS = {
   open: { title: "Open Devices", filter: "OPEN" },
   assigned: { title: "Assigned Devices", filter: "ASSIGNED" },
@@ -126,37 +135,87 @@ export default function LaptopDesktop() {
    */
   const onRegister = async (row, typeId) => {
     /*
-     * An OPEN device that IS registered (a record in ams_add_device_master, just nobody
-     * holding it) opens that record in ADD DEVICE to edit — its Action History is where the
-     * employee is assigned. The full record comes from the same list LIST DEVICE loads.
+     * A device already saved through ADD DEVICE (a record in ams_add_device_master, just nobody
+     * holding it) opens THAT record — every field entered when it was added (processor, RAM,
+     * OS, plant, warranty, …) — never a blank form with only type / model / name.
+     *
+     * Looked up by id, and by name too: an Open row whose catalogue name matches a saved device
+     * is that device, even if the list did not flag it as registered.
      */
-    if (row.registered) {
+    /*
+     * FIRST: the device's own saved record, fetched by type and name from ams_add_device_master
+     * (GET /asset/details). Found → it opens with everything entered on ADD DEVICE.
+     */
+    // Values the old per-type table holds for a device not added yet (warranty, system type, …).
+    let legacy = null;
+    if (row.name) {
       try {
-        const res = await getAssetList(typeId);
-        const found =
-          res?.status_code === 200 && Array.isArray(res.response)
-            ? res.response.find((a) => a.id === row.id)
-            : null;
-        if (found) {
-          /*
-           * VIEW FIRST: a Reference No click means "show me this device", so it opens to READ —
-           * every field locked, no UPDATE. EDIT at the bottom opens the same device to change
-           * (and to assign an employee in its Action History).
-           */
+        const res = await getAssetDetails(typeId, row.name);
+        if (res?.status_code === 200 && res.response?.id) {
           setPrefill(null);
-          setEditing(found);
+          setEditing(res.response);
           setReadOnly(true);
           setView("add");
           return;
         }
+        if (res?.status_code === 200 && res.response?.source === "legacy") legacy = res.response;
       } catch {
-        /* falls through to a pre-filled new form below */
+        /* falls back to the list lookup below */
       }
+    }
+
+    let lookupFailed = false;
+    try {
+      const res = await getAssetList(typeId);
+      const list = res?.status_code === 200 && Array.isArray(res.response) ? res.response : null;
+      if (!list) lookupFailed = row.registered;
+      const key = String(row.name ?? "").trim().toLowerCase();
+      const found = list
+        ? (row.registered && list.find((a) => String(a.id) === String(row.id))) ||
+          (key && list.find((a) => String(a.name ?? "").trim().toLowerCase() === key)) ||
+          null
+        : null;
+      if (found) {
+        /*
+         * VIEW FIRST: a Reference No click means "show me this device", so it opens to READ —
+         * every field locked, no UPDATE. EDIT at the bottom opens the same device to change
+         * (and to assign an employee in its Action History).
+         */
+        setPrefill(null);
+        setEditing(found);
+        setReadOnly(true);
+        setView("add");
+        return;
+      }
+      if (row.registered) lookupFailed = true;
+    } catch {
+      lookupFailed = row.registered;
+    }
+    // A saved device that could not be loaded must not open as an empty new form.
+    if (lookupFailed) {
+      await warnAlert(
+        "Could not open this device",
+        "Its saved details could not be loaded. Check the connection and try again."
+      );
+      return;
     }
     // An Open name not added yet: ADD DEVICE to fill in (type, model, name locked) — read-only for a VIEWER.
     setEditing(null);
     setReadOnly(viewer);
-    setPrefill({ device_id: String(typeId), model: row.model ?? "", name: row.name ?? "" });
+    // Whatever the old table has for it (warranty, system type, …) is filled in too, still editable.
+    const fromLegacy = {};
+    if (legacy) {
+      LEGACY_FORM_FIELDS.forEach((k) => {
+        const v = legacy[k];
+        if (v !== null && v !== undefined && String(v).trim() !== "") fromLegacy[k] = String(v);
+      });
+    }
+    setPrefill({
+      ...fromLegacy,
+      device_id: String(typeId),
+      model: row.model || fromLegacy.model || "",
+      name: row.name ?? "",
+    });
     setView("add");
   };
 

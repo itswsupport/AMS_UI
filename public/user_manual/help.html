@@ -238,6 +238,11 @@
   .mf-btn{background:var(--blue);color:#fff;border-radius:4px;padding:7px 26px;
           font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
   @media (max-width:640px){ .mf-grid{grid-template-columns:1fr} .mf-two{grid-column:auto} }
+  /* A real screenshot of a screen, with a caption under it. */
+  .shot{margin:12px 0 16px}
+  .shot img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px;
+    box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  .shot figcaption{font-size:11.5px;color:var(--muted);margin-top:6px;text-align:center}
 
   .field{margin:9px 0;padding-left:12px;border-left:3px solid var(--line)}
   .field .fn{font-weight:700;font-size:13px}
@@ -277,13 +282,10 @@
   <a href="#login" class="quick-link">Login</a>
   <a href="#dashboard" class="quick-link">User Dashboard</a>
   <a href="#adddevice" class="quick-link">Add Device</a>
-  <a href="#lists" class="quick-link">Device Lists</a>
   <a href="#server" class="quick-link">Server</a>
   <a href="#software" class="quick-link">Software</a>
   <a href="#bulk" class="quick-link">Bulk Upload</a>
-  <a href="#admin" class="quick-link">Admin Setting</a>
   <a href="#tables" class="quick-link">Tables &amp; Exports</a>
-  <a href="#faq" class="quick-link">Help &amp; FAQ</a>
 </div>
 
 
@@ -291,12 +293,12 @@
 <div class="guide" id="access">
   <div class="guide-header bg-purple"><div class="num">1</div><h2>The Three Roles &mdash; Admin, User, Viewer</h2></div>
   <div class="guide-body">
-  <p class="lede">AMS has exactly <b>three roles</b>. An admin gives each employee a role in <b>Setting &rarr; Reporting Person</b>; the role decides the menu, the start page and what can be changed.</p>
+  <p class="lede">AMS has exactly <b>three roles</b>. An admin gives each employee a role in <b>Setting &rarr; Login Access</b>; the role decides the menu, the start page and what can be changed.</p>
 
   <div class="tw"><table>
     <thead><tr><th>Role</th><th>Menu</th><th>Sees</th><th>Can change</th></tr></thead>
     <tbody>
-      <tr><td><span class="chip admin">Admin</span></td><td>Home, Setting</td><td>All master data; devices only in their own plant(s) and device types</td><td>Adds <b>all the master data</b> in Setting &mdash; device types, models, device names, RAM, processor, OS, locations, warranty, IP addresses, servers, products, licences &mdash; and who may sign in (Reporting Person). What the admin adds is what users pick on the user side.</td></tr>
+      <tr><td><span class="chip admin">Admin</span></td><td>Home, Setting</td><td>All master data; devices only in their own plant(s) and device types</td><td>Adds <b>all the master data</b> in Setting &mdash; device types, models, device names, RAM, processor, OS, locations, warranty, IP addresses, servers, products, licences &mdash; and who may sign in (Login Access). What the admin adds is what users pick on the user side.</td></tr>
       <tr><td><span class="chip user">User</span></td><td>Home, User Dashboard</td><td>Only their own plant(s) and device types</td><td>Adds and edits devices, servers and software, picking from the master data the admin added; Bulk Upload</td></tr>
       <tr><td><span class="chip viewer">Viewer</span></td><td>User Dashboard</td><td>Only their own plant(s) and device types</td><td><b>Nothing</b> &mdash; view only</td></tr>
     </tbody>
@@ -312,19 +314,155 @@
   <p>For example: the admin adds <b>16 GB</b> in RAM Master &rarr; <b>16 GB</b> is now in the RAM list on the user&rsquo;s Add Device form. A new device type, model or device name added by the admin appears there the same way. Anything not in a master cannot be picked &mdash; ask the admin to add it first.</p>
 
   <div class="note tip"><b>Admin and User can be given together</b>One employee can be both: they get both menus (Home, User Dashboard, Setting) and can do the work of both roles &mdash; on the user side, for their own plant(s) and device types.</div>
-  <div class="note"><b>Plant-wise access for every role</b>Admin, User and Viewer each work only on the plants and device types picked for them in Reporting Person. The shared masters (RAM, OS, Model &hellip;) are common to all plants.</div>
+  <div class="note"><b>Plant-wise access for every role</b>Admin, User and Viewer each work only on the plants and device types picked for them in Login Access. The shared masters (RAM, OS, Model &hellip;) are common to all plants.</div>
   <div class="note warn"><b>Viewer stands alone</b>A viewer can never also be a User or an Admin &mdash; the Role list greys those out, and saving such a combination is refused.</div>
   <div class="note"><b>A viewer sees no buttons that change anything</b>No Add cards, no EDIT, no SUBMIT / UPDATE, no Bulk Upload buttons &mdash; records open read-only.</div>
   </div>
 </div>
 
+<!-- ============================================ PROJECT FLOW -->
+<div class="guide" id="flow">
+  <div class="guide-header bg-purple"><div class="num">2</div><h2>Project Flow</h2></div>
+  <div class="guide-body">
+  <div class="roles"><span class="chip all">Everyone</span></div>
+  <p class="lede">How AMS works from login to an assigned device. Read the chart from the top down.</p>
+
+  <div class="fc-legend">
+    <span class="li"><span class="sw term c-start"></span>Start / end</span>
+    <span class="li"><span class="sw io c-io"></span>You do it</span>
+    <span class="li"><span class="sw proc c-proc"></span>AMS does it</span>
+    <span class="li"><span class="sw dec c-dec"></span>A question</span>
+  </div>
+
+  <div class="fc-body">
+    <div class="fc-row"><div class="fc-lane">
+      <div class="fc-shape s-term c-start"><div class="t">Start &mdash; Open AMS</div></div>
+      <div class="fc-down"></div></div><div class="fc-lane"></div></div>
+
+    <div class="fc-row"><div class="fc-lane">
+      <div class="fc-shape s-io c-io"><div class="inner"><span class="sn">STEP 1 &middot; YOU</span>
+        <div class="t">Login</div>
+        <div class="d">Enter your Employee Code and Password.</div></div></div>
+      <div class="fc-down"></div></div><div class="fc-lane"></div></div>
+
+    <div class="fc-row"><div class="fc-lane">
+      <div class="fc-shape s-proc c-proc"><span class="sn">STEP 2 &middot; AMS</span>
+        <div class="t">Login Access Checked</div>
+        <div class="d">Your role, companies, plants and device types are read from Login Access.</div></div>
+      <div class="fc-down"></div></div><div class="fc-lane"></div></div>
+
+    <div class="fc-row">
+      <div class="fc-lane">
+        <div class="fc-shape s-dec c-dec"><div class="inner"><span class="sn">QUESTION</span>
+          <div class="t">Which role?</div></div></div>
+        <span class="fc-tag t-ok">User / Viewer</span>
+        <div class="fc-down"></div>
+      </div>
+      <div class="fc-lane">
+        <span class="fc-tag t-ok">Admin</span>
+        <div class="fc-down short"></div>
+        <div class="fc-shape s-proc c-proc"><div class="t">Setting &mdash; Master Data</div>
+          <div class="d">The admin adds Company, Plant, Device, Model, Device Name, RAM, Processor and the other masters. These appear in the user&rsquo;s dropdowns.</div></div>
+      </div>
+    </div>
+
+    <div class="fc-row"><div class="fc-lane">
+      <div class="fc-shape s-proc c-proc"><span class="sn">STEP 3 &middot; AMS</span>
+        <div class="t">User Dashboard</div>
+        <div class="d">Add Device, Server, Software and Bulk Upload. A viewer can only view.</div></div>
+      <div class="fc-down"></div></div><div class="fc-lane"></div></div>
+
+    <div class="fc-row"><div class="fc-lane">
+      <div class="fc-shape s-io c-io"><div class="inner"><span class="sn">STEP 4 &middot; YOU</span>
+        <div class="t">Add Device</div>
+        <div class="d">Select Company, Plant, Device Type, Model and Device Name, fill in the details, and press Submit.</div></div></div>
+      <div class="fc-down"></div></div><div class="fc-lane"></div></div>
+
+    <div class="fc-row">
+      <div class="fc-lane">
+        <div class="fc-shape s-dec c-dec"><div class="inner"><span class="sn">QUESTION</span>
+          <div class="t">Employee assigned?</div></div></div>
+        <span class="fc-tag t-ok">Yes</span>
+        <div class="fc-down"></div>
+      </div>
+      <div class="fc-lane">
+        <span class="fc-tag t-no">No</span>
+        <div class="fc-down short"></div>
+        <div class="fc-shape s-proc c-proc"><div class="t">Open</div>
+          <div class="d">The device is shown in the Open Devices tab. It can be assigned later.</div></div>
+      </div>
+    </div>
+
+    <div class="fc-row"><div class="fc-lane">
+      <div class="fc-shape s-proc c-proc"><span class="sn">STEP 5 &middot; AMS</span>
+        <div class="t">Assigned</div>
+        <div class="d">The device is shown in the Assigned Devices tab, with the employee in Action History.</div></div>
+      <div class="fc-down"></div></div><div class="fc-lane"></div></div>
+
+    <div class="fc-row">
+      <div class="fc-lane">
+        <div class="fc-shape s-dec c-dec"><div class="inner"><span class="sn">QUESTION</span>
+          <div class="t">User left?</div></div></div>
+        <span class="fc-tag t-ok">Yes</span>
+        <div class="fc-down"></div>
+      </div>
+      <div class="fc-lane">
+        <span class="fc-tag t-no">No</span>
+        <div class="fc-down short"></div>
+        <div class="fc-shape s-proc c-proc"><div class="t">Stays Assigned</div>
+          <div class="d">The device stays in the Assigned Devices tab.</div></div>
+      </div>
+    </div>
+
+    <div class="fc-row"><div class="fc-lane">
+      <div class="fc-shape s-io c-io"><div class="inner"><span class="sn">STEP 6 &middot; YOU</span>
+        <div class="t">Release Date and Reason</div>
+        <div class="d">Enter the Release Date and select the reason User Left.</div></div></div>
+      <div class="fc-down"></div></div><div class="fc-lane"></div></div>
+
+    <div class="fc-row">
+      <div class="fc-lane">
+        <div class="fc-shape s-dec c-dec"><div class="inner"><span class="sn">QUESTION</span>
+          <div class="t">New employee assigned?</div></div></div>
+        <span class="fc-tag t-no">No</span>
+        <div class="fc-down"></div>
+      </div>
+      <div class="fc-lane">
+        <span class="fc-tag t-ok">Yes</span>
+        <div class="fc-down short"></div>
+        <div class="fc-shape s-proc c-proc"><div class="t">Assigned</div>
+          <div class="d">The device stays in the Assigned Devices tab with the new employee.</div></div>
+      </div>
+    </div>
+
+    <div class="fc-row"><div class="fc-lane">
+      <div class="fc-shape s-term c-end"><div class="t">End &mdash; Open Again</div>
+        <div class="d">The device goes to the Open Devices tab again. When a new employee is hired, it can be assigned to them.</div></div></div>
+      <div class="fc-lane"></div></div>
+  </div>
+
+  <h3>The six reasons</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Reason</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><b>Open</b></td><td>Open Devices tab</td></tr>
+      <tr><td><b>User Left</b></td><td>Assigned Devices tab if a new employee is selected; otherwise the Open Devices tab</td></tr>
+      <tr><td><b>Asset Transferred</b></td><td>Assigned Devices tab, with the new employee</td></tr>
+      <tr><td><b>Laptop Replaced</b></td><td>Assigned Devices tab, with the new employee</td></tr>
+      <tr><td><b>User Transferred To Another Plant</b></td><td>Assigned Devices tab, with the new employee. Plant, Department and Location can be changed.</td></tr>
+      <tr><td><b>Asset Transfer Internally</b></td><td>Assigned Devices tab, with the new employee</td></tr>
+    </tbody>
+  </table></div>
+  </div>
+</div>
+
 <!-- ============================================ LOGIN -->
 <div class="guide" id="login">
-  <div class="guide-header bg-blue"><div class="num">2</div><h2>How to Login</h2></div>
+  <div class="guide-header bg-blue"><div class="num">3</div><h2>How to Login</h2></div>
   <div class="guide-body">
   <div class="roles"><span class="chip all">Everyone</span></div>
 
-  <p class="lede">You sign in with your employee code. Only employees given access in <b>Reporting Person</b> can sign in.</p>
+  <p class="lede">You sign in with your employee code. Only employees given access in <b>Login Access</b> can sign in.</p>
 
   <ol class="steps">
     <li>Open AMS in your browser.</li>
@@ -341,18 +479,32 @@
     <div class="mf-submit"><span class="mf-btn">Login</span></div>
   </div>
 
-  <h3>Staying signed in</h3>
+  <h3>After login &mdash; Admin</h3>
+  <p>An <span class="chip admin">Admin</span> lands on <b>Setting</b>: one tile for every master. Click a tile to open that master.</p>
+  <figure class="shot">
+    <img src="images/admin-setting-dashboard.png" alt="Admin Setting page after login, showing the master tiles: Company, Plant, Department, Location, Role, Login Access, RAM, Processor, HDD, Operating System, System Type, Device, Model, Device Name, Warranty, Product, Server, IP Address and License Master" loading="lazy">
+    <figcaption>The Setting page an admin sees after signing in.</figcaption>
+  </figure>
+
+  <h3>The Admin page &mdash; master data</h3>
   <ul>
-    <li>You stay signed in while you work. <b>30 minutes with no activity at all</b> (no mouse, typing, scrolling or clicking) signs you out by itself with <i>&ldquo;Session Timed Out&rdquo;</i>.</li>
-    <li>Any activity &mdash; even at minute 29 &mdash; starts the 30 minutes again.</li>
-    <li>All open AMS tabs share one session: working in one keeps all of them alive, and <b>LOGOUT</b> in one signs out all of them.</li>
+    <li>The Admin page holds <b>all the master data</b> &mdash; device types, models, device names, RAM, processors, operating systems, plants, locations, warranty, IP addresses, servers, products and licenses.</li>
+    <li>Only what the admin adds here is shown on the user side. For example, a RAM size added in <b>RAM Master</b> appears in the RAM list of the user&rsquo;s Add Device form.</li>
+    <li>If a value is missing from a list on the user side, ask the admin to add it to the correct master first.</li>
   </ul>
+
+  <h3>After login &mdash; User</h3>
+  <p>A <span class="chip user">User</span> lands on the <b>User Dashboard</b>, which has four cards: <b>Add Device</b>, <b>Server</b>, <b>Software</b> and <b>Bulk Upload</b>. Click a card to open that page.</p>
+  <figure class="shot">
+    <img src="images/user-dashboard.png" alt="User Dashboard after login, showing the four cards: Add Device, Server, Software and Bulk Upload" loading="lazy">
+    <figcaption>The User Dashboard a user sees after signing in.</figcaption>
+  </figure>
   </div>
 </div>
 
 <!-- ============================================ USER DASHBOARD -->
 <div class="guide" id="dashboard">
-  <div class="guide-header bg-teal"><div class="num">3</div><h2>The User Dashboard</h2></div>
+  <div class="guide-header bg-teal"><div class="num">4</div><h2>The User Dashboard</h2></div>
   <div class="guide-body">
   <div class="roles"><span class="chip user">User</span><span class="chip viewer">Viewer</span></div>
   <p class="lede">Four cards &mdash; each opens its own page.</p>
@@ -378,85 +530,38 @@
 
 <!-- ============================================ ADD DEVICE -->
 <div class="guide" id="adddevice">
-  <div class="guide-header bg-blue"><div class="num">4</div><h2>Add Device &mdash; Step by Step</h2></div>
+  <div class="guide-header bg-blue"><div class="num">5</div><h2>Add Device &mdash; Step by Step</h2></div>
   <div class="guide-body">
   <div class="roles"><span class="chip user">User</span></div>
-  <p class="lede">The page has four cards on top. <b>Add Device</b> opens the form; the other three show their count and open their list.</p>
-
-  <div class="cards">
-    <div class="mock m-blue">+ Add Device</div>
-    <div class="mock m-amber"><span class="n">618</span>Open Devices</div>
-    <div class="mock m-green"><span class="n">22</span>Assigned Devices</div>
-    <div class="mock m-sky"><span class="n">640</span>Total Devices</div>
-  </div>
-
-  <ol class="steps">
-    <li>Press <b>Add Device</b>.</li>
-    <li>Pick <b>Device Type</b>, then <b>Model</b>, then <b>Device Name</b> &mdash; in that order; each list shows only what belongs to the one above. Device Name lists only names created in Device Name Master and not added yet.</li>
-    <li>The form now shows only the fields that device type has &mdash; a printer has no processor or OS, a tablet has ROM instead of HDD, only a laptop has a Charger, only a desktop has Keyboard and Mouse.</li>
-    <li>Fill every field marked <span class="req">*</span>. Pick <b>Plant</b> before Department and Location &mdash; they list that plant's own.</li>
-    <li>Optionally give the device to someone in <b>Action History</b>: pick <b>Assign To Employee</b> and a <b>Start Date</b> (not for printers).</li>
-    <li>Press <b>SUBMIT</b>. You see <i>&ldquo;Device added successfully&rdquo;</i> and its <b>Reference No</b>.</li>
-  </ol>
-
-  <div class="mockform">
-    <div class="mf-title">Add Device &mdash; Device Details</div>
-    <div class="mf-grid">
-      <div class="mf-f"><div class="l">Device Type <span class="req">*</span></div><div class="b">Search Device Type&hellip;</div></div>
-      <div class="mf-f"><div class="l">Model <span class="req">*</span></div><div class="b">Search Model&hellip;</div></div>
-      <div class="mf-f"><div class="l">Device Name <span class="req">*</span></div><div class="b">Select Model first&hellip;</div></div>
-      <div class="mf-f"><div class="l">Reference No</div><div class="b">Auto-generated on save</div></div>
-      <div class="mf-f"><div class="l">Asset Code <span class="req">*</span></div><div class="b">e.g. 1900058</div></div>
-      <div class="mf-f"><div class="l">PO No. <span class="req">*</span></div><div class="b">e.g. 410000074</div></div>
-    </div>
-    <div class="mf-submit"><span class="mf-btn">Submit</span></div>
-  </div>
-
-  <h3>Filled in by the system &mdash; never typed</h3>
-  <div class="field"><div class="fn">Reference No</div><div class="fd">Given on save from the device type, the year, the device name and a running number (e.g. DE26OPRN915306). It never changes.</div></div>
-  <div class="field"><div class="fn">Company</div><div class="fd">From the Plant picked.</div></div>
-  <div class="field"><div class="fn">Total Warranty (Years &amp; Months)</div><div class="fd">From the Warranty Start and End Date.</div></div>
-  <div class="field"><div class="fn">Age (Year.Month)</div><div class="fd">How old the device is today, from the Warranty Start Date &mdash; <code>5.01</code> is 5 years 1 month, <code>3.00</code> is 3 years.</div></div>
-
-  <h3>What each code field takes</h3>
-  <p>A character the field does not take is refused as you type, with a red line naming the field &mdash; e.g. <i>&ldquo;PO No. needs numbers only &mdash; letters are not allowed.&rdquo;</i></p>
-  <div class="tw"><table>
-    <thead><tr><th>Field</th><th>Takes</th><th>Example</th></tr></thead>
-    <tbody>
-      <tr><td>PO No., Asset Code</td><td>Numbers only</td><td><code>410000074</code></td></tr>
-      <tr><td>Service Tag, Exp. Service Code</td><td>Letters and numbers (no spaces or symbols)</td><td><code>FJWG9F2</code></td></tr>
-      <tr><td>Asset S/N</td><td>Letters, numbers and : - .</td><td><code>54:13:79:68:A7:FD</code></td></tr>
-      <tr><td>Charger Adaptor, Keyboard, Mouse</td><td>Letters, numbers and - :</td><td><code>CN-0DMR5H-CH200-769-039K-A02</code></td></tr>
-    </tbody>
-  </table></div>
-
-  <div class="note tip"><b>Optional fields</b>Description, Exp. Service Code, the External fields, Keyboard and Mouse can be left empty.</div>
-  </div>
-</div>
-
-<!-- ============================================ DEVICE LISTS -->
-<div class="guide" id="lists">
-  <div class="guide-header bg-green"><div class="num">5</div><h2>Open, Assigned &amp; Total Devices</h2></div>
-  <div class="guide-body">
-  <div class="roles"><span class="chip user">User</span><span class="chip viewer">Viewer</span></div>
-  <p class="lede">Each card opens a list with one tab per device type. Open = nobody holds it; Assigned = an employee holds it; Total = both.</p>
-
-  <ol class="steps">
-    <li>Pick a tab &mdash; <b>Desktop</b>, <b>Laptop</b>, &hellip; Each shows its count. On a phone the tabs stay on one line: use <b>&lsaquo; &rsaquo;</b> or swipe to reach the rest.</li>
-    <li>Click a <b>Reference No</b> to open that device <b>read-only</b>.</li>
-    <li>Press <b>EDIT</b> to change it, then <b>UPDATE</b>.</li>
-    <li>A popup lists every change &mdash; <i>field: from &rarr; to</i> &mdash; press <b>Yes, update</b> or <b>Cancel</b>. Nothing changed: <i>&ldquo;Nothing to update&rdquo;</i>.</li>
-  </ol>
-
-  <h3>Handing a device over (Action History)</h3>
+  <p class="lede">Clicking the <b>Add Device</b> card on the User Dashboard opens the Add Device page, which has these four options:</p>
   <ul>
-    <li><b>Current Holder</b> shows who has it. To take it back, fill <b>Release Date</b> and <b>Reason</b>.</li>
-    <li>To give it to someone, fill <b>Assign To Employee</b> and <b>Start Date</b> &mdash; its status becomes <span class="pill p-closed">Assigned</span>.</li>
-    <li>The history table below keeps every holder with start and end dates.</li>
+    <li><b>Add Device</b> &mdash; opens a blank form to add a new device.</li>
+    <li><b>Open Devices</b> &mdash; devices that have been added but are not yet assigned to any employee.</li>
+    <li><b>Assigned Devices</b> &mdash; devices that are assigned to a particular employee (a printer is assigned to its department).</li>
+    <li><b>Total Devices</b> &mdash; the count of all devices, open and assigned together (Open + Assigned = Total).</li>
   </ul>
+  <figure class="shot">
+    <img src="images/add-device-cards.png" alt="Add Device page showing four cards: Add Device, Open Devices, Assigned Devices and Total Devices, each with its count" loading="lazy">
+    <figcaption>The Add Device page, with the number of devices on each card.</figcaption>
+  </figure>
 
-  <h3>User Log</h3>
-  <p>Every saved change is recorded under <b>User Log</b>: the field, before, after, who changed it and when &mdash; whether it was changed on the form or by a Bulk Upload update.</p>
+  <h3>Device count by type</h3>
+  <p>Clicking <b>Open Devices</b>, <b>Assigned Devices</b> or <b>Total Devices</b> opens its list. Below the cards there is one tab for each device type &mdash; <b>Desktop</b>, <b>Laptop</b>, <b>Printer</b> and <b>Tablet</b> &mdash; and the number on each tab shows how many devices of that type are in the list. Click a tab to see only that type.</p>
+  <figure class="shot">
+    <img src="images/open-devices-tabs.png" alt="Open Devices list with one tab per device type and its count: Desktop, Laptop, Printer and Tablet" loading="lazy">
+    <figcaption>Open Devices, with the number of open devices for each type: Desktop, Laptop, Printer and Tablet.</figcaption>
+  </figure>
+
+  <h3>Two ways to add a device</h3>
+  <ol class="steps">
+    <li><b>From Open Devices</b> &mdash; when the admin adds a device name in <b>Device Name Master</b>, that device appears in <b>Open Devices</b> under its type. Click its <b>Reference No</b> to open the Add Device form. The Device Type, Model and Device Name are already filled in.
+      <figure class="shot">
+        <img src="images/open-device-reference.png" alt="Open Devices list showing device PPC203 with its Reference No DE26PPC203301 and status Open" loading="lazy">
+        <figcaption>Click the Reference No (for example, DE26PPC203301) to open the Add Device form for that device.</figcaption>
+      </figure>
+    </li>
+    <li><b>From the Add Device card</b> &mdash; click <b>Add Device</b> to open a blank form, then choose the Device Type and Model. The <b>Device Name</b> list shows the device names that are already added, as well as the device names that are open.</li>
+  </ol>
   </div>
 </div>
 
@@ -466,9 +571,13 @@
   <div class="guide-body">
   <div class="roles"><span class="chip user">User</span><span class="chip viewer">Viewer</span></div>
   <p class="lede">Two cards: <b>Add Server</b> and <b>List Server</b>. The page opens on the list.</p>
+  <figure class="shot">
+    <img src="images/server-cards.png" alt="Server page showing two cards: Add Server and List Server" loading="lazy">
+    <figcaption>The Server page: Add Server and List Server.</figcaption>
+  </figure>
   <ol class="steps">
     <li>Press <b>Add Server</b>. <b>Server Name</b> <span class="req">*</span> comes from Server Master &mdash; only servers not added yet are listed.</li>
-    <li>Fill the hardware, software, allocation and warranty details. <b>S/N</b> takes letters and numbers only.</li>
+    <li>Fill in the server information. Once the server information is added, the server appears in <b>List Server</b>.</li>
     <li>Press <b>SUBMIT</b> &mdash; <i>&ldquo;Server added successfully&rdquo;</i>. Total Warranty is worked out from the two dates.</li>
     <li>In <b>List Server</b>, click a server's name to view it; <b>EDIT</b> to change it.</li>
   </ol>
@@ -480,11 +589,16 @@
   <div class="guide-header bg-grey"><div class="num">7</div><h2>Software</h2></div>
   <div class="guide-body">
   <div class="roles"><span class="chip user">User</span><span class="chip viewer">Viewer</span></div>
+  <figure class="shot">
+    <img src="images/software-cards.png" alt="Software page showing two cards: Add Software and List Software" loading="lazy">
+    <figcaption>The Software page: Add Software and List Software.</figcaption>
+  </figure>
   <p class="lede">Two cards: <b>Add Software</b> and <b>List Software</b>.</p>
   <ol class="steps">
     <li>Press <b>Add Software</b>. <b>Product Name</b> <span class="req">*</span> comes from Product Master.</li>
     <li>Fill <b>Total Licenses Acquired</b>, <b>License Excess or Deficiency</b> (may be negative), <b>License Type</b> (from License Master), <b>Renewal Date</b> and <b>Status</b>.</li>
     <li>Press <b>SUBMIT</b> &mdash; <i>&ldquo;Software added successfully&rdquo;</i>. The same product may be added more than once.</li>
+    <li>Once the software is added, it appears in <b>List Software</b>.</li>
   </ol>
   </div>
 </div>
@@ -494,65 +608,24 @@
   <div class="guide-header bg-purple"><div class="num">8</div><h2>Bulk Upload &mdash; Many at Once from Excel</h2></div>
   <div class="guide-body">
   <div class="roles"><span class="chip user">User</span></div>
-  <p class="lede">Pick <b>Device</b>, <b>Server</b> or <b>Software</b>, download its Excel template, fill it, and upload it. Read the chart from the top down.</p>
+  <p class="lede">Pick <b>Device</b>, <b>Server</b> or <b>Software</b>, download its Excel template, fill it, and upload it.</p>
 
-  <div class="fc-legend">
-    <span class="li"><span class="sw term c-start"></span>Start / end</span>
-    <span class="li"><span class="sw io c-io"></span>You do it</span>
-    <span class="li"><span class="sw proc c-proc"></span>AMS does it</span>
-    <span class="li"><span class="sw dec c-dec"></span>A question</span>
-    <span class="li"><span class="sw proc c-stop"></span>Not uploaded</span>
-  </div>
+  <figure class="shot">
+    <img src="images/bulk-upload-card.png" alt="User Dashboard showing the Bulk Upload card beside Add Device, Server and Software" loading="lazy">
+    <figcaption>Click the Bulk Upload card on the User Dashboard.</figcaption>
+  </figure>
 
-  <div class="fc-body">
-    <div class="fc-row"><div class="fc-lane">
-      <div class="fc-shape s-term c-start"><div class="t">Start &mdash; Bulk Upload &rarr; Device</div></div>
-      <div class="fc-down"></div></div><div class="fc-lane"></div></div>
+  <p>When you click <b>Bulk Upload</b>, the following page opens:</p>
+  <figure class="shot">
+    <img src="images/bulk-upload-page.png" alt="Bulk Upload page with Device, Server and Software cards, the Download Device Template button and the Select File box" loading="lazy">
+    <figcaption>The Bulk Upload page.</figcaption>
+  </figure>
 
-    <div class="fc-row"><div class="fc-lane">
-      <div class="fc-shape s-io c-io"><div class="inner"><span class="sn">STEP 1 &middot; YOU</span>
-        <div class="t">Download Device Template</div>
-        <div class="d">Choose one device type (e.g. Desktop) or All device types. The sheet has only that type's columns.</div></div></div>
-      <div class="fc-down"></div></div><div class="fc-lane"></div></div>
-
-    <div class="fc-row"><div class="fc-lane">
-      <div class="fc-shape s-io c-io"><div class="inner"><span class="sn">STEP 2 &middot; YOU</span>
-        <div class="t">Fill the Sheet</div>
-        <div class="d">One device per row. Fill every column marked *. Leave the grey columns &mdash; they fill in by themselves.</div></div></div>
-      <div class="fc-down"></div></div><div class="fc-lane"></div></div>
-
-    <div class="fc-row"><div class="fc-lane">
-      <div class="fc-shape s-proc c-proc"><span class="sn">STEP 3 &middot; AMS</span>
-        <div class="t">Select File &mdash; Every Row Checked</div>
-        <div class="d">New, already added, changed, or needs fixing &mdash; shown above the table before anything is saved.</div></div>
-      <div class="fc-down"></div></div><div class="fc-lane"></div></div>
-
-    <div class="fc-row">
-      <div class="fc-lane">
-        <div class="fc-shape s-dec c-dec"><div class="inner"><span class="sn">QUESTION</span>
-          <div class="t">Anything new or changed?</div></div></div>
-        <span class="fc-tag t-ok">Yes</span>
-        <div class="fc-down"></div>
-      </div>
-      <div class="fc-lane">
-        <span class="fc-tag t-no">No</span>
-        <div class="fc-down short"></div>
-        <div class="fc-shape s-proc c-stop"><div class="t">Nothing new to upload</div>
-          <div class="msg">&ldquo;HR601, EDC504 are already added &mdash; they will not be uploaded.&rdquo; &mdash; Cancel only.</div></div>
-      </div>
-    </div>
-
-    <div class="fc-row"><div class="fc-lane">
-      <div class="fc-shape s-io c-io"><div class="inner"><span class="sn">STEP 4 &middot; YOU</span>
-        <div class="t">Upload File &rarr; Confirm</div>
-        <div class="d">The popup names what happens, e.g. &ldquo;HR601 is already added &mdash; it will not be uploaded. Only HR307 will be uploaded.&rdquo; Press Yes, upload.</div></div></div>
-      <div class="fc-down"></div></div><div class="fc-lane"></div></div>
-
-    <div class="fc-row"><div class="fc-lane">
-      <div class="fc-shape s-term c-end"><div class="t">Upload Complete</div>
-        <div class="d">New devices get their Reference No; changed ones are updated and logged.</div></div></div>
-      <div class="fc-lane"></div></div>
-  </div>
+  <ol class="steps">
+    <li>As shown in the image above, click <b>Download Template</b>. The template is downloaded to your system.</li>
+    <li>Fill in the required details in the template and save it.</li>
+    <li>Click <b>Select File</b> and upload the saved file.</li>
+  </ol>
 
   <h3>What happens to each row</h3>
   <div class="tw"><table>
@@ -581,39 +654,36 @@
   </div>
 </div>
 
-<!-- ============================================ ADMIN SETTING -->
-<div class="guide" id="admin">
-  <div class="guide-header bg-red"><div class="num">9</div><h2>Admin Setting &mdash; The Masters</h2></div>
+<!-- ============================================ USER LEFT -->
+<div class="guide" id="userleft">
+  <div class="guide-header bg-orange"><div class="num">9</div><h2>User Left &mdash; Release an Assigned Device</h2></div>
   <div class="guide-body">
-  <div class="roles"><span class="chip admin">Admin</span></div>
-  <p class="lede">Setting holds every list the forms pick from. Each card opens one master.</p>
-
-  <div class="tw"><table>
-    <thead><tr><th>Master</th><th>Used by</th></tr></thead>
-    <tbody>
-      <tr><td>Device, Model, Device Name</td><td>Add Device &rarr; Device Type, Model, Device Name</td></tr>
-      <tr><td>RAM, Processor, HDD, Operating System, System Type</td><td>Hardware and software fields</td></tr>
-      <tr><td>Warranty, IP Address</td><td>Warranty Status, IP Address</td></tr>
-      <tr><td>Server, Product, License</td><td>Add Server, Add Software</td></tr>
-      <tr><td>Department, Location, Sub Category</td><td>Allocation and categories</td></tr>
-      <tr><td><b>Reporting Person</b></td><td>Who may sign in, with which role, plants and device types</td></tr>
-    </tbody>
-  </table></div>
+  <div class="roles"><span class="chip user">User</span></div>
+  <p class="lede">Use this when a device is assigned to a user and that user resigns or leaves.</p>
 
   <ol class="steps">
-    <li>Open a master and press <b>+ ADD</b>; fill the form and <b>SAVE</b> &mdash; <i>&ldquo;RAM added successfully&rdquo;</i>.</li>
-    <li>To change one, press the pencil, change it and <b>UPDATE</b>. A popup lists each change <i>from &rarr; to</i>: <b>Yes, update</b> or <b>Cancel</b>.</li>
-    <li>The bin deletes a row, after <b>Yes, delete it</b>.</li>
+    <li>Go to <b>Add Device &rarr; Assigned Devices</b> and click that particular device.
+      <figure class="shot">
+        <img src="images/assigned-devices-list.png" alt="Assigned Devices list with Desktop, Laptop, Printer and Tablet tabs" loading="lazy">
+        <figcaption>Assigned Devices &mdash; click the device to open it.</figcaption>
+      </figure>
+    </li>
+    <li>In <b>Action History</b>, the current user is shown. Enter the <b>Release Date</b> and select the <b>Reason</b>.
+      <figure class="shot">
+        <img src="images/user-left-release.png" alt="Action History with the current holder, Start Date, Release Date and Reason, and Assign To New Employee below" loading="lazy">
+        <figcaption>Action History &mdash; Release Date and Reason for the current user.</figcaption>
+      </figure>
+    </li>
+    <li>In the Reason list, select <b>User Left</b>.
+      <figure class="shot">
+        <img src="images/user-left-reason.png" alt="Reason list showing Open, User Left, Asset Transferred, Laptop Replaced, User Transferred to Another Plant and Asset Transfer Internally" loading="lazy">
+        <figcaption>The Reason list.</figcaption>
+      </figure>
+    </li>
+    <li>If a new employee has been hired in place of that user, select the employee in <b>Assign To Employee</b> and enter the <b>Start Date</b>. The device is assigned to the new employee.</li>
+    <li>If no user is assigned, leave <b>Assign To Employee</b> empty. The device then goes to <b>Open</b>, and you can see it in the <b>Open Devices</b> tab.</li>
+    <li>When the employee is hired later, open the device from the <b>Open Devices</b> tab and assign it then.</li>
   </ol>
-
-  <h3>Reporting Person &mdash; giving access</h3>
-  <ol class="steps">
-    <li>Pick <b>Company</b>, one or more <b>Plants</b>, one or more <b>Device Types</b> and the <b>Employee</b>.</li>
-    <li>Tick the <b>Role</b>: User, Admin, both User and Admin, or Viewer alone.</li>
-    <li><b>SAVE</b> &mdash; the employee can now sign in with that role.</li>
-  </ol>
-  <div class="note warn"><b>Viewer is always on its own</b>Ticking Viewer greys out User and Admin (and the other way round). An employee who is a Viewer in one entry cannot be a User or Admin in another.</div>
-  <div class="note stop"><b>Delete removes the access</b>Deleting an employee's Reporting Person entry signs them out of AMS for good.</div>
   </div>
 </div>
 
@@ -634,42 +704,6 @@
     </tbody>
   </table></div>
   <div class="note tip"><b>On a phone</b>Wide tables scroll sideways inside their own box &mdash; swipe the table left and right.</div>
-  </div>
-</div>
-
-<!-- ============================================ FAQ -->
-<div class="guide" id="faq">
-  <div class="guide-header bg-grey"><div class="num">?</div><h2>Help &amp; Common Questions</h2></div>
-  <div class="guide-body">
-
-  <h3>&ldquo;Session Timed Out&rdquo;</h3>
-  <p>30 minutes passed with no activity. Sign in again &mdash; nothing saved is lost; an unsaved form is.</p>
-
-  <h3>&ldquo;PO No. needs numbers only &mdash; letters are not allowed.&rdquo;</h3>
-  <p>That field takes only the characters named. See <a href="#adddevice">What each code field takes</a>.</p>
-
-  <h3>&ldquo;Nothing to update&rdquo;</h3>
-  <p>UPDATE was pressed without changing anything &mdash; nothing is saved.</p>
-
-  <h3>&ldquo;Nothing new to upload&rdquo;</h3>
-  <p>Every row of the sheet is already added, with the same values. Add new rows, or change values to update devices.</p>
-
-  <h3>I cannot type in a grey column of the template</h3>
-  <p>Reference No, Company, Total Warranty and Age fill in by themselves &mdash; leave them.</p>
-
-  <h3>&ldquo;Wrong template &mdash; missing column(s)&rdquo;</h3>
-  <p>A heading was renamed or deleted. Download the template again and copy your rows into it.</p>
-
-  <h3>I see no EDIT or Add button</h3>
-  <p>You are a <b>Viewer</b> &mdash; view only. Ask an admin if you need to make changes.</p>
-
-  <h3>A device type or plant is missing for me</h3>
-  <p>Users and viewers see only the plants and device types given to them in Reporting Person. Ask an admin to add it.</p>
-
-  <h3>The table is missing a column</h3>
-  <p>It has probably been hidden &mdash; open <b>Columns</b> above the table and show it again.</p>
-
-  <div class="note"><b>Still stuck?</b>Contact the IT team with a screenshot of the screen and any message shown.</div>
   </div>
 </div>
 

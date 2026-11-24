@@ -191,6 +191,41 @@ const FIELD_LABELS = {
  *
  * One employee per row, always.
  */
+/*
+ * DRAFTS — what was typed for a device NOT SAVED YET, kept in this browser per user, device type
+ * and device name. Opening that same device again (from Open Devices, or picking its name on
+ * ADD DEVICE) brings every typed field back, so nothing is lost if SUBMIT did not go through or
+ * BACK was pressed. Removed once the device is saved, or when CLEAR empties the form.
+ */
+const DRAFT_PREFIX = "ams_device_draft_";
+const draftKeyFor = (userCode, deviceId, name) => {
+  const n = String(name ?? "").trim().toLowerCase();
+  return deviceId && n ? `${DRAFT_PREFIX}${userCode || "anon"}_${deviceId}_${n}` : null;
+};
+const readDraft = (key) => {
+  try {
+    return JSON.parse(localStorage.getItem(key) || "null");
+  } catch {
+    return null;
+  }
+};
+const writeDraft = (key, value) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage unavailable — the form still works, only the draft is not kept */
+  }
+};
+const removeDraft = (key) => {
+  try {
+    if (key) localStorage.removeItem(key);
+  } catch {
+    /* nothing to remove */
+  }
+};
+/** Fields filled in by the form itself — on their own they are not "something typed". */
+const DRAFT_IGNORED = new Set(["device_id", "model", "name", "device_status", "plant", "status"]);
+
 const BLANK_RELEASE = { end_date: "", action_status: "" };
 const BLANK_ASSIGN = { assigned_emp_code: "", assigned_emp_name: "", start_date: "" };
 
@@ -447,6 +482,11 @@ export default function AddDevice({
   // Closing the current holder's row, and opening the next holder's. See BLANK_RELEASE.
   const [release, setRelease] = useState(BLANK_RELEASE);
   const [assign, setAssign] = useState(BLANK_ASSIGN);
+  /*
+   * The CURRENT HOLDER's Start Date as shown in their panel — editable, so a wrong "since" date
+   * can be corrected on EDIT. Set from their history row whenever it loads (see below).
+   */
+  const [holderStart, setHolderStart] = useState("");
 
   /** The entries already recorded against this machine. */
   const [history, setHistory] = useState([]);
@@ -574,6 +614,8 @@ export default function AddDevice({
   useEffect(() => {
     // A different row, or none: the machine SAVE wrote is no longer the one on screen.
     setJustSavedId(null);
+    // Company follows the new row's plant (filled in from it); none for a blank form.
+    setCompany("");
     if (!editing) {
       // Adding: blank, or started from DEVICE STATUS's chosen type, model and device name.
       // A NEW device starts as In Use (its STATUS); an existing one keeps what it has.
@@ -823,13 +865,51 @@ export default function AddDevice({
    * A value already on the record that is no longer in the master is pinned, so opening an
    * old machine does not show an empty box and blank its plant on save.
    */
-  /** The company the chosen plant belongs to, for the read-only COMPANY field beside Plant. */
-  const plantCompany = useMemo(() => {
-    const code = (form.plant ?? "").trim().toLowerCase();
-    if (!code) return "";
-    const p = plants.find((x) => (x.plant_code ?? "").trim().toLowerCase() === code);
-    return p ? p.company_name || p.company_short_name || "" : "";
-  }, [plants, form.plant]);
+  /** The company a plant code belongs to (Company Master, as on Plant Master), or "". */
+  const companyOfPlant = (code) => {
+    const key = String(code ?? "").trim().toLowerCase();
+    if (!key) return "";
+    const p = plants.find((x) => String(x.plant_code ?? "").trim().toLowerCase() === key);
+    return p ? (p.company_name || p.company_short_name || "").trim() : "";
+  };
+
+  /*
+   * COMPANY — chosen FIRST, as on Plant Master; Plant then lists only that company's plants.
+   * Not saved on the device (its plant says whose it is): when a device is opened, it is
+   * filled in from the device's plant.
+   */
+  const [company, setCompany] = useState("");
+  useEffect(() => {
+    const c = companyOfPlant(form.plant);
+    if (c && c !== company) setCompany(c);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.plant, plants]);
+
+  /*
+   * LOCATION only for a company that HAS locations in Location Master. Burlyfield and Rucha
+   * Yantra have only plants, no locations — for them the Location field is hidden and not
+   * required. Worked out from the company of the chosen plant (or the Company picked).
+   * While Location Master is still loading, Location stays shown.
+   */
+  const companyHasLocations = useMemo(() => {
+    const co = companyOfPlant(form.plant) || company;
+    if (!co || !locations.length) return true;
+    const codes = plants
+      .filter((p) => (p.company_name || p.company_short_name || "").trim() === co)
+      .map((p) => String(p.plant_code ?? "").trim());
+    return locations.some((l) => codes.includes(String(l.plant_code ?? "").trim()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [company, form.plant, plants, locations]);
+
+  /** EVERY company in Company Master (GET /company/list, as on the Company Master page), A–Z. */
+  const companyOptions = useMemo(() => {
+    const names = [
+      ...new Set(
+        plants.map((p) => (p.company_name || p.company_short_name || "").trim()).filter(Boolean)
+      ),
+    ].sort((a, b) => a.localeCompare(b));
+    return names.map((n) => ({ value: n, label: n }));
+  }, [plants]);
 
   const plantOptions = useMemo(() => {
     const seen = new Set();
@@ -867,13 +947,17 @@ export default function AddDevice({
     if (plantFixed) {
       return options.filter((o) => String(o.value).trim() === scope.plant);
     }
+    // Only the chosen company's plants (the record's own plant is kept, too); none until one is chosen.
+    const ofCompany = company
+      ? options.filter((o) => companyOfPlant(o.value) === company || o.value === form.plant)
+      : [];
     // A USER with several plants picks one of THEIRS (the record's own value is kept, too).
     if (scope.limited && scope.plants.length > 1) {
-      return options.filter((o) => scope.allowsPlant(o.value) || o.value === form.plant);
+      return ofCompany.filter((o) => scope.allowsPlant(o.value) || o.value === form.plant);
     }
-    return options;
+    return ofCompany;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plants, form.plant, plantFixed, scope.plant, scope.plants.join(",")]);
+  }, [plants, form.plant, plantFixed, scope.plant, scope.plants.join(","), company]);
 
   /*
    * A USER's plant is filled in for them — on a new form, after CLEAR, and when a device is
@@ -1056,7 +1140,50 @@ export default function AddDevice({
     )[0];
   }, [history]);
 
+  // The holder's Start Date field starts from their saved row, and again whenever it reloads.
+  const savedHolderStart = currentHolder?.start_date ?? "";
+  useEffect(() => {
+    setHolderStart(savedHolderStart);
+  }, [currentHolder?.id, savedHolderStart]);
+
+  /** The current holder's Start Date was corrected on this EDIT (not saved yet). */
+  const holderStartChanged =
+    !readOnly && Boolean(currentHolder) && holderStart !== savedHolderStart;
+  /** The holder's start as it will be saved — the corrected one, or the saved one. */
+  const effectiveHolderStart = holderStartChanged ? holderStart : savedHolderStart;
+
   const filled = (obj) => Object.values(obj).some((v) => String(v ?? "").trim() !== "");
+
+  /*
+   * THE DRAFT for this device (see DRAFT_PREFIX) — only while adding a device not saved yet.
+   * Restored once per device when its type and name are known, then kept in step with every
+   * change to the form.
+   */
+  const draftKey =
+    !editing?.id && !justSavedId && !readOnly
+      ? draftKeyFor(changedBy.changed_by_code, form.device_id, form.name)
+      : null;
+  const restoredDraft = useRef(null);
+
+  useEffect(() => {
+    if (!draftKey || restoredDraft.current === draftKey) return;
+    restoredDraft.current = draftKey;
+    const draft = readDraft(draftKey);
+    if (!draft?.form) return;
+    // The device itself (type, model, name) stays as chosen; everything typed comes back.
+    setForm((f) => ({ ...f, ...draft.form, device_id: f.device_id, model: f.model, name: f.name }));
+    if (draft.assign) setAssign((a) => ({ ...a, ...draft.assign }));
+  }, [draftKey]);
+
+  useEffect(() => {
+    if (!draftKey || restoredDraft.current !== draftKey) return;
+    const typed =
+      Object.keys(BLANK).some((k) => !DRAFT_IGNORED.has(k) && String(form[k] ?? "").trim() !== "") ||
+      filled(assign);
+    if (typed) writeDraft(draftKey, { form, assign, at: Date.now() });
+    else removeDraft(draftKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey, form, assign]);
 
   /*
    * The history as ONE ROW PER EMPLOYEE — each entry is one person and their period.
@@ -1075,6 +1202,9 @@ export default function AddDevice({
       .map((h) => {
         const releasingThis =
           !readOnly && currentHolder && h.id === currentHolder.id && release.end_date;
+        // The current holder's Start Date corrected on this EDIT shows straight away, as "unsaved".
+        const restartingThis =
+          holderStartChanged && currentHolder && h.id === currentHolder.id && holderStart;
         return {
           entryId: h.id,
           role: "assigned",
@@ -1083,7 +1213,7 @@ export default function AddDevice({
           // Where the device was when this entry was written — saved on the row, not the device's plant now.
           plant: h.plant ?? "",
           location: h.location ?? "",
-          start: h.start_date ?? "",
+          start: restartingThis ? holderStart : h.start_date ?? "",
           end: releasingThis ? release.end_date : h.end_date ?? "",
           actionStatus: releasingThis
             ? release.action_status || h.action_status || ""
@@ -1091,7 +1221,7 @@ export default function AddDevice({
           recorded: h.create_date ?? "",
           // Who assigned it, "code - name" — blank on entries saved before this was kept.
           assignedBy: [h.action_by_emp_code, h.action_by_emp_name].filter(Boolean).join(" - "),
-          pending: Boolean(releasingThis),
+          pending: Boolean(releasingThis || restartingThis),
         };
       });
 
@@ -1100,7 +1230,7 @@ export default function AddDevice({
       if (!b.start) return -1;
       return b.start.localeCompare(a.start) || (b.entryId ?? 0) - (a.entryId ?? 0);
     });
-  }, [history, readOnly, currentHolder, release.end_date, release.action_status]);
+  }, [history, readOnly, currentHolder, release.end_date, release.action_status, holderStartChanged, holderStart]);
 
   // The workbook records a charger for laptops only; every other device has none to track.
   const isLaptop = deviceName.toLowerCase() === "laptop";
@@ -1136,13 +1266,15 @@ export default function AddDevice({
     return (
       changed ||
       JSON.stringify(assign) !== JSON.stringify(BLANK_ASSIGN) ||
-      JSON.stringify(release) !== JSON.stringify(BLANK_RELEASE)
+      JSON.stringify(release) !== JSON.stringify(BLANK_RELEASE) ||
+      holderStartChanged
     );
   };
 
   /** BACK: asks first when there are changes not saved; otherwise straight back to the list. */
   const onBack = async () => {
-    if (hasUnsavedChanges() && !(await confirmDiscard())) return;
+    // A device not saved yet keeps what was typed as its draft, so nothing is being discarded.
+    if (!draftKey && hasUnsavedChanges() && !(await confirmDiscard())) return;
     onClose?.();
   };
 
@@ -1156,6 +1288,9 @@ export default function AddDevice({
     // Action History too: CLEAR means the whole form, not the top of it.
     setRelease(BLANK_RELEASE);
     setAssign(BLANK_ASSIGN);
+    setHolderStart(savedHolderStart);
+    // CLEAR empties Company too (a USER's fixed plant fills it back in by itself).
+    setCompany("");
     // An emptied form is a new machine again, not the one SAVE just wrote.
     setJustSavedId(null);
     setHistory([]);
@@ -1193,7 +1328,15 @@ export default function AddDevice({
    * required only once something in it is filled in, or when the current holder is released
    * for any reason except "Open" (then the device goes straight to someone new).
    */
-  const assigning = hasActionHistory && !returningToStock && (filled(assign) || releasing);
+  /*
+   * Released with the reason "User Left": no new employee may be hired yet, so Assign To
+   * Employee is OPTIONAL — required only once an employee is picked. (The Start Date copied
+   * in from the Release Date alone does not make it required.)
+   */
+  const userLeftNoNewEmployee =
+    releasing && release.action_status === "User Left" && !assign.assigned_emp_code;
+  const assigning =
+    hasActionHistory && !returningToStock && !userLeftNoNewEmployee && (filled(assign) || releasing);
 
   /*
    * EVERY FIELD IS MANDATORY EXCEPT CLASSIFICATION AND DESCRIPTION — but only the ones on screen. A printer
@@ -1223,7 +1366,8 @@ export default function AddDevice({
     ["charger", "Charger Adaptor", softwareShown && isLaptop],
     ["plant", "Plant", shows("plant")],
     ["department", "Department", shows("department")],
-    ["location", "Location", shows("location")],
+    // Not for a company with no locations (Burlyfield, Rucha Yantra) — the field is hidden.
+    ["location", "Location", shows("location") && companyHasLocations],
     ["ip_address", "IP Address", shows("ip_address")],
     ["device_status", "Status", shows("device_status")],
     ["warranty_status", "Warranty Status", true],
@@ -1259,11 +1403,16 @@ export default function AddDevice({
       }
     }
 
+    // The current holder's Start Date, when corrected on EDIT, cannot be left empty.
+    if (holderStartChanged && !holderStart) {
+      errs["holder.start_date"] = "Start Date is required.";
+    }
+
     // RELEASE — closing the current holder: date and reason required.
     if (releasing) {
       if (!release.end_date) {
         errs["release.end_date"] = "Release Date is required.";
-      } else if (currentHolder.start_date && release.end_date < currentHolder.start_date) {
+      } else if (effectiveHolderStart && release.end_date < effectiveHolderStart) {
         errs["release.end_date"] = "Release Date cannot be before they got it.";
       }
       if (!release.action_status) errs["release.action_status"] = "Reason is required.";
@@ -1333,6 +1482,8 @@ export default function AddDevice({
     }
     // Device Status is hidden for printers and tablets, so nothing left over from another type.
     if (!shows("device_status")) body.device_status = "";
+    // A company with no locations (Burlyfield, Rucha Yantra): Location is hidden, so none is saved.
+    if (!companyHasLocations) body.location = "";
 
     const res = targetId
       ? await updateAsset({ ...body, id: targetId })
@@ -1372,13 +1523,39 @@ export default function AddDevice({
    * Returns true when everything asked for was written.
    */
   const persistActions = async (assetId, report = setError) => {
+    /*
+     * ONLY THE HOLDER'S START DATE CORRECTED (no release): their own row is updated with the
+     * new Start Date — they still hold the device, so no end date and the same status.
+     */
+    if (holderStartChanged && !releasing) {
+      const res = await updateAssetActionHistory({
+        id: currentHolder.id,
+        asset_id: assetId,
+        assigned_emp_code: currentHolder.assigned_emp_code,
+        assigned_emp_name: currentHolder.assigned_emp_name,
+        start_date: holderStart,
+        end_date: null,
+        action_status: currentHolder.action_status || "Assigned",
+        status: currentHolder.status,
+      });
+      if (res?.status_code !== 200) {
+        await warnAlert(
+          "Device saved, Start Date not updated",
+          res?.message || "The current holder's Start Date could not be updated."
+        );
+        report(res?.message || "Could not update the Start Date.");
+        return false;
+      }
+    }
+
     if (releasing) {
       const res = await updateAssetActionHistory({
         id: currentHolder.id,
         asset_id: assetId,
         assigned_emp_code: currentHolder.assigned_emp_code,
         assigned_emp_name: currentHolder.assigned_emp_name,
-        start_date: currentHolder.start_date || null,
+        // The corrected Start Date, if it was changed on this EDIT.
+        start_date: effectiveHolderStart || null,
         end_date: release.end_date,
         action_status: release.action_status,
         status: currentHolder.status,
@@ -1468,6 +1645,12 @@ export default function AddDevice({
         .map((k) => ({ label: FIELD_LABELS[k], from: show(k, base[k]), to: show(k, form[k]) }));
 
       const notes = [];
+      if (holderStartChanged) {
+        notes.push(
+          `Start Date of ${[currentHolder?.assigned_emp_code, currentHolder?.assigned_emp_name].filter(Boolean).join(" - ")}` +
+            `: ${savedHolderStart ? fmtDate(savedHolderStart) : "—"} → ${fmtDate(holderStart)}`
+        );
+      }
       if (releasing) {
         notes.push(
           `Release ${[currentHolder?.assigned_emp_code, currentHolder?.assigned_emp_name].filter(Boolean).join(" - ")}` +
@@ -1496,7 +1679,7 @@ export default function AddDevice({
       if (!savedId) return;
 
     
-      if ((releasing || assigning) && !(await persistActions(savedId))) return;
+      if ((releasing || assigning || holderStartChanged) && !(await persistActions(savedId))) return;
 
       const historyNote =
         releasing && assigning
@@ -1513,6 +1696,8 @@ export default function AddDevice({
       );
 
       const savedDeviceId = Number(form.device_id);
+      // Saved: the device's own record now holds everything, so its draft is no longer needed.
+      removeDraft(draftKey);
       reset();
       // Back to LIST DEVICE, on the same device, so the row just saved is there to see.
       if (onSaved) onSaved(savedDeviceId);
@@ -1967,6 +2152,35 @@ export default function AddDevice({
               To Another Plant</b> in Action History below — these fields then open.
             </p>
           )}
+          {/* COMPANY — chosen first (every company, as on Plant Master); Plant then lists its plants. */}
+          {shows("plant") && (
+            <div>
+              <label className={LABEL_CLS}>
+                Company <Req />
+              </label>
+              <Select
+                options={companyOptions}
+                value={companyOptions.find((o) => o.value === company) ?? (company ? { value: company, label: company } : null)}
+                onChange={(opt) => {
+                  const next = opt ? opt.value : "";
+                  setCompany(next);
+                  // A plant of another company no longer fits: Plant, Department and Location are cleared.
+                  setForm((f) =>
+                    companyOfPlant(f.plant) === next ? f : { ...f, plant: "", department: "", location: "" }
+                  );
+                }}
+                // A USER's plant (and so its company) is fixed in Reporting Person.
+                isDisabled={allocDisabled || plantFixed}
+                isClearable={!plantFixed}
+                placeholder="Search Company..."
+                noOptionsMessage={() => "No company matches that"}
+                menuPlacement="bottom"
+                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                components={nativeSelectComponents}
+                styles={selectStyles(errors.plant && !company)}
+              />
+            </div>
+          )}
           {shows("plant") && (
           <div>
             <label className={LABEL_CLS}>
@@ -1985,9 +2199,9 @@ export default function AddDevice({
                 })
               }
               // A USER's plant is fixed to the one set for them in Reporting Person.
-              isDisabled={allocDisabled || plantFixed}
+              isDisabled={allocDisabled || plantFixed || !company}
               isClearable={!plantFixed}
-              placeholder="Search Plant..."
+              placeholder={company ? "Search Plant..." : "Select Company first..."}
               noOptionsMessage={() => "No plant matches that"}
               /* Matches the hidden `search` text, not just the visible code. */
               filterOption={(option, input) =>
@@ -2000,20 +2214,6 @@ export default function AddDevice({
             />
             <FieldError msg={errors.plant} />
           </div>
-          )}
-          {/* COMPANY — not typed or saved: the company the chosen plant belongs to (company
-              master, by plant code), shown beside Plant so it is clear whose unit it is. */}
-          {shows("plant") && (
-            <div>
-              <label className={LABEL_CLS}>Company</label>
-              <input
-                type="text"
-                value={plantCompany}
-                disabled
-                placeholder={form.plant ? "" : "Select Plant first..."}
-                className={FIELD_CLS}
-              />
-            </div>
           )}
           {shows("department") && (
             <MasterSelect
@@ -2028,7 +2228,8 @@ export default function AddDevice({
               master="Department Master"
             />
           )}
-          {shows("location") && (
+          {/* Hidden for a company with no locations in Location Master (Burlyfield, Rucha Yantra). */}
+          {shows("location") && companyHasLocations && (
             <MasterSelect
               label="Location"
               required
@@ -2229,15 +2430,33 @@ export default function AddDevice({
                         .filter(Boolean)
                         .join(" - ")}
                     </span>
-                    {currentHolder.start_date && (
+                    {/* Follows the Start Date field below, so a corrected date shows here at once. */}
+                    {(holderStart || currentHolder.start_date) && (
                       <span className="text-[12px] text-gray-500">
-                        since {fmtDate(currentHolder.start_date)}
+                        since {fmtDate(holderStart || currentHolder.start_date)}
+                        {holderStartChanged && (
+                          <span className="ml-1 font-semibold text-amber-600">(unsaved)</span>
+                        )}
                       </span>
                     )}
                     <ActionStatusBadge status={currentHolder.action_status || "Assigned"} />
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                    {/* The holder's own Start Date — correct it here if the "since" date is wrong. */}
+                    <div>
+                      <label className={LABEL_CLS}>
+                        Start Date <Req />
+                      </label>
+                      <input
+                        type="date"
+                        value={holderStart}
+                        onChange={(e) => setHolderStart(e.target.value)}
+                        disabled={disabled}
+                        className={fieldCls(errors["holder.start_date"])}
+                      />
+                      <FieldError msg={errors["holder.start_date"]} />
+                    </div>
                     <div>
                       <label className={LABEL_CLS}>
                         Release Date {releasing && <Req />}

@@ -32,19 +32,7 @@ import { getCompanyList, getDepartmentList, getLocationList } from "@/services/m
 
 import SearchableSelect from "@/components/ui/common/SearchableSelect";
 /**
- * ADD SERVER — the user side of Server.
- *
- * The fields are the workbook's SERVER sheet, which is also exactly the shape of
- * ams_server_with_ip_master. Only NAME is required; the sheet leaves most cells blank on
- * most rows, so a form that insisted on more could not record the servers the company has.
- *
- * AGE is not here. It is (last date of warranty − term) measured to today, so it changes by
- * itself as months pass — the backend works it out on every read and the list shows it.
- *
- * Where a master owns a list, the field is a searchable dropdown over it and nothing else
- * can be entered: Processor, RAM, HDD, OS, System Type, IP Address, Department, Plant and
- * Warranty Status. The rest are typed, because no master owns them yet.
- *
+
  * @param barColor the card's colour, so the bar reads as attached to it
  * @param onSaved  called after a successful save, so the page can show the list
  * @param editing  a row handed over by the list view, or null to add
@@ -86,19 +74,11 @@ const BLANK = {
   other_software_1: "",
   other_software_2: "",
   description: "",
-  /*
-   * NOT ON THE FORM, but carried so an edit cannot blank it. The sheet recorded an owner
-   * against some servers and there is no field asking for one.
-   */
   owner_name: "",
   status: 1,
 };
 
-/**
- * TOTAL WARRANTY (IN YEARS) from the two dates — the same rule as ADD DEVICE: whole months from
- * the start to the day after the last date, as years to two decimals (01/10/2026 to 30/09/2029
- * is 3, to 31/03/2028 is 1.5). Blank until both dates are there and the last is after the start.
- */
+
 const warrantyYears = (start, end) => {
   if (!start || !end || end <= start) return "";
   const [sy, sm, sd] = start.split("-").map(Number);
@@ -210,6 +190,7 @@ function TextField({ label, value, onChange, disabled, placeholder, maxLength = 
   const handleChange = (e) => {
     const warning = format ? typedWarning(format, e.target.value, label) : null;
     clearTimeout(timer.current);
+    
     setTyped(warning ?? "");
     if (warning) timer.current = setTimeout(() => setTyped(""), 3000);
     onChange(e);

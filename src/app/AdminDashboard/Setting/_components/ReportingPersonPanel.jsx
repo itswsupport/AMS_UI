@@ -56,7 +56,8 @@ export default function ReportingPersonPanel({ barColor }) {
   const [loadingRows, setLoadingRows] = useState(true);
   const [loadError, setLoadError] = useState("");
 
-  const [companyName, setCompanyName] = useState("");
+  // Company names — one, two or all (saved comma-separated in company_name, like plant_code).
+  const [pickedCompanies, setPickedCompanies] = useState([]);
   // Plant codes, as strings — one or several (saved comma-separated: "1001,1003").
   const [plantCodes, setPlantCodes] = useState([]);
   // Device Master ids, as strings — one or several.
@@ -122,22 +123,30 @@ export default function ReportingPersonPanel({ barColor }) {
   const companyNames = [
     ...new Set(companies.map((c) => c.company_name).filter(Boolean)),
   ].sort();
+  /** COMPANY — one, two or all, with the same checkbox picker as Plant. */
+  const companyOptions = companyNames.map((n) => ({ value: n, label: n }));
+
+  /** Which company a plant code belongs to. */
+  const companyOfPlant = (code) =>
+    companies.find((c) => String(c.plant_code) === String(code))?.company_name ?? "";
+
+  // The plants of EVERY company picked (1001 … for Rucha Engineers, 3001 for Burlyfield …).
   const plantsForCompany = [
     ...new Map(
       companies
-        .filter((c) => c.company_name === companyName && c.plant_code)
+        .filter((c) => pickedCompanies.includes(c.company_name) && c.plant_code)
         .map((c) => [String(c.plant_code), c])
     ).values(),
   ].sort((a, b) => String(a.plant_code).localeCompare(String(b.plant_code)));
 
   /*
-   * Only the plant CODE is shown (1001, 1002 …). The plant's name is carried in `search`, never
-   * displayed, so typing part of the name still finds its code (see filterOption below).
+   * Only the plant CODE is shown (1001, 1002 …). The plant's name and company are carried in
+   * `search`, never displayed, so typing part of either still finds its code.
    */
   const plantOptions = plantsForCompany.map((p) => ({
     value: String(p.plant_code),
     label: String(p.plant_code),
-    search: `${p.plant_code} ${p.plant_name ?? ""}`.toLowerCase(),
+    search: `${p.plant_code} ${p.plant_name ?? ""} ${p.company_name ?? ""}`.toLowerCase(),
   }));
 
   /** DEVICE TYPE — every active device in Device Master, "Laptop" rather than "laptop". */
@@ -197,7 +206,7 @@ export default function ReportingPersonPanel({ barColor }) {
   }));
 
   const clearFields = () => {
-    setCompanyName("");
+    setPickedCompanies([]);
     setPlantCodes([]);
     setDeviceIds([]);
     setEmpCode("");
@@ -210,11 +219,16 @@ export default function ReportingPersonPanel({ barColor }) {
 
   const onEdit = (row) => {
     setEditingId(row.id);
-    // The company that plant belongs to in plant_dept_mst, so a row saved with another
-    // spelling of the company name still opens on the right one.
+    /*
+     * The companies of the saved plants (plant_dept_mst), so a row saved with another spelling
+     * of a company name still opens on the right ones — plus any company saved on the row
+     * itself (one, or several comma-separated).
+     */
     const saved = String(row.plant_code ?? "").split(",").map((c) => c.trim()).filter(Boolean);
-    const plantRow = companies.find((d) => String(d.plant_code) === saved[0]);
-    setCompanyName(plantRow?.company_name ?? row.company_name ?? "");
+    const fromPlants = saved.map(companyOfPlant).filter(Boolean);
+    const fromRow = String(row.company_name ?? "").split(",").map((c) => c.trim()).filter(Boolean)
+      .filter((n) => companyNames.includes(n));
+    setPickedCompanies([...new Set([...fromPlants, ...fromRow])]);
     setPlantCodes(saved);
     setDeviceIds(Array.isArray(row.device_ids) ? row.device_ids.map((id) => String(id)) : []);
     setEmpCode(row.emp_code ? String(row.emp_code) : "");
@@ -238,7 +252,7 @@ export default function ReportingPersonPanel({ barColor }) {
   const onSubmit = async (e) => {
     e.preventDefault();
 
-    if (!companyName) return setError("Select a company.");
+    if (pickedCompanies.length === 0) return setError("Select at least one company.");
     if (plantCodes.length === 0) return setError("Select at least one plant.");
     if (deviceIds.length === 0) return setError("Select at least one device type.");
     if (!empCode) return setError("Select an employee.");
@@ -312,7 +326,8 @@ export default function ReportingPersonPanel({ barColor }) {
     setError("");
     try {
       const body = {
-        company_name: companyName,
+        // One, two or all companies, A–Z, comma-separated (the backend stores it the same way).
+        company_name: [...pickedCompanies].sort((a, b) => a.localeCompare(b)).join(","),
         // Only the codes — a plant's name is in the plant master (shown from the company).
         plant_code: picked.join(","),
         device_ids: deviceIds.map(Number),
@@ -344,6 +359,8 @@ export default function ReportingPersonPanel({ barColor }) {
             status: "Status",
           },
           show: {
+            // Order does not matter for companies either.
+            company_name: (v) => sorted(String(v ?? "").split(",").map((c) => c.trim()).filter(Boolean)).join(", "),
             // Order does not matter: "1003,1001" and "1001,1003" are the same plants.
             plant_code: (v) => sorted(String(v ?? "").split(",").map((c) => c.trim()).filter(Boolean)).join(", "),
             device_ids: (v) => sorted((Array.isArray(v) ? v : []).map(deviceName)).join(", "),
@@ -400,7 +417,14 @@ export default function ReportingPersonPanel({ barColor }) {
 
   const columns = [
     { label: "SR. NO", width: 70 },
-    { key: "company_name", label: "COMPANY" },
+    // One company or several: "BURLYFIELD BIOTECH PVT. LTD, RUCHA ENGINEERS PVT LTD".
+    {
+      key: "company_name",
+      label: "COMPANY",
+      render: (row) => (
+        <span>{String(row.company_name ?? "").split(",").map((c) => c.trim()).filter(Boolean).join(", ") || "-"}</span>
+      ),
+    },
     // One plant or several: "1001, 1003".
     {
       key: "plant_code",
@@ -490,18 +514,21 @@ export default function ReportingPersonPanel({ barColor }) {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-5">
             <div>
               <label className={labelCls}>Company <span className="text-red-500">*</span></label>
-              <SearchableSelect
-                value={companyName}
-                onChange={(e) => {
-                  setCompanyName(e.target.value);
-                  // The plants belonged to the previous company.
-                  setPlantCodes([]);
+              {/*
+                One company, two, or all of them — the same checkbox picker as Plant, "All" after
+                the last. Plant then lists the plants of every company picked.
+              */}
+              <CheckMultiSelect
+                options={companyOptions}
+                values={pickedCompanies}
+                onChange={(next) => {
+                  setPickedCompanies(next);
+                  // A plant of a company no longer picked is dropped; the others stay ticked.
+                  setPlantCodes((codes) => codes.filter((c) => next.includes(companyOfPlant(c))));
                 }}
-                className={fieldCls}
-              >
-                <option value="">Select Company</option>
-                {companyNames.map((n) => <option key={n} value={n}>{n}</option>)}
-              </SearchableSelect>
+                noun="companies"
+                placeholder="Select Company..."
+              />
             </div>
 
             <div>
@@ -520,7 +547,7 @@ export default function ReportingPersonPanel({ barColor }) {
                 onChange={setPlantCodes}
                 noun="plants"
                 placeholder="Search Plant..."
-                isDisabled={!companyName}
+                isDisabled={pickedCompanies.length === 0}
               />
             </div>
 

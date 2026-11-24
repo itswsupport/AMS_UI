@@ -18,6 +18,9 @@ import { apiGet, apiPost, apiDelete } from "@/lib/api";
  * row here is a real entry.
  */
 export const getAssetList = (deviceId) => apiGet("asset/list", { device_id: deviceId });
+/** One device's saved record (ams_add_device_master) by type and name; response null if not saved. */
+export const getAssetDetails = (deviceId, name) =>
+  apiGet("asset/details", { device_id: deviceId, name });
 export const saveAsset = (data) => apiPost("asset/save", data);
 export const updateAsset = (data) => apiPost("asset/update", data);
 export const deleteAsset = (id) => apiDelete("asset/delete", { id });
